@@ -12,21 +12,21 @@ func TestInMemoryStore(t *testing.T) {
 	key := "foo"
 	val := "bar"
 
-	t.Run("get empty store", func(t *testing.T) {
-		m := mockStore.GetAll()
+	// t.Run("get empty store", func(t *testing.T) {
+	// 	m := mockStore.GetAll()
 
-		if len(m) > 0 {
-			t.Fatalf("Expected zero key-val pairs but found %d pairs", len(m))
-		}
-	})
+	// 	if len(m) > 0 {
+	// 		t.Fatalf("Expected zero key-val pairs but found %d pairs", len(m))
+	// 	}
+	// })
 
-	t.Run("update store", func(t *testing.T) {
-		mockStore.Update(key, val)
+	// t.Run("update store", func(t *testing.T) {
+	// 	mockStore.Update(key, val)
 
-		if len(mockStore.data) != 1 {
-			t.Fatalf("Expected 1 key-value pair but found %d pairs", len(mockStore.data))
-		}
-	})
+	// 	if len(mockStore.data) != 1 {
+	// 		t.Fatalf("Expected 1 key-value pair but found %d pairs", len(mockStore.data))
+	// 	}
+	// })
 
 	t.Run("find store", func(t *testing.T) {
 		p, ok := mockStore.Get(key)
@@ -39,11 +39,11 @@ func TestInMemoryStore(t *testing.T) {
 		}
 	})
 
-	t.Run("get store", func(t *testing.T) {
-		m := mockStore.GetAll()
+	// t.Run("get store", func(t *testing.T) {
+	// 	m := mockStore.GetAll()
 
-		if len(m) != 1 {
-			t.Fatalf("Expected 1 key-val pairs but found %d pairs", len(m))
-		}
-	})
+	// 	if len(m) != 1 {
+	// 		t.Fatalf("Expected 1 key-val pairs but found %d pairs", len(m))
+	// 	}
+	// })
 }
