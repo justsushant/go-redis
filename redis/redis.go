@@ -8,17 +8,21 @@ import (
 	// "github.com/justsushant/one2n-go-bootcamp/redis-go/store/inMemoryStore"
 )
 
-var ErrKeyNotFound = errors.New("failed to find the key")
-var ErrKeyNotInteger = errors.New("requested key is not integer")
-var DeleteSuccessMessage = "1"
-var DeleteFailedMessage = "0"
+var ErrKeyNotFound = errors.New("(nil)")
+// var ErrKeyNotFound = errors.New("failed to find the key")
+var ErrKeyNotInteger = errors.New("value is not an integer or out of range")
+var SetSuccessMessage = "OK"
+var DeleteSuccessMessage = "(integer) 1"
+var DeleteFailedMessage = "(integer) 0"
 var DefaultIntegerValue = "1"
+var Integer = "(integer)"
 
 type DbInterface interface {
 	Set(key, val string)
 	Get(key string) (string, error)
 	Del(key string) string
-	// Incr(key string) error
+	Incr(key string) (string, error)
+	Incrby(key, val string) (string, error)
 }
 
 type Db struct {
@@ -50,38 +54,45 @@ func(d Db) Del(key string) string {
 		return DeleteFailedMessage
 	}
 
-	d.store.Set(key, "nil")
+	d.store.Del(key)
 	return DeleteSuccessMessage
 }
 
-func(d Db) Incr(key string) error {
+func(d Db) Incr(key string) (string, error) {
 	val, ok := d.store.Get(key)
 	if !ok {
 		d.store.Set(key, DefaultIntegerValue)
-		return nil
+		return SetSuccessMessage, nil
 	}
 
 	i, err := strconv.Atoi(val)
 	if err != nil {
-		return ErrKeyNotInteger
+		return "", ErrKeyNotInteger
 	}
 
-	d.store.Set(key, strconv.Itoa(i+1))
-	return nil
+	incrVal := i+1
+	d.store.Set(key, strconv.Itoa(incrVal))
+	return Integer + " " + strconv.Itoa(incrVal), nil
 }
 
-func(d Db) IncrBy(key string, i int) error {
+func(d Db) Incrby(key, i string) (string, error) {
+	num, err := strconv.Atoi(i)
+	if err != nil {
+		return "", ErrKeyNotInteger
+	}
+
 	val, ok := d.store.Get(key)
 	if !ok {
-		d.store.Set(key, strconv.Itoa(i))
-		return nil
+		d.store.Set(key, strconv.Itoa(num))
+		return Integer + " " + i, nil
 	}
 
-	num, err := strconv.Atoi(val)
+	vali, err := strconv.Atoi(val)
 	if err != nil {
-		return ErrKeyNotInteger
+		return "", ErrKeyNotInteger
 	}
-
-	d.store.Set(key, strconv.Itoa(num+i))
-	return nil
+	
+	incrVal := num+vali
+	d.store.Set(key, strconv.Itoa(incrVal))
+	return Integer + " " + strconv.Itoa(incrVal), nil
 }

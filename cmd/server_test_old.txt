@@ -1,0 +1,94 @@
+package cmd
+
+import (
+	"bytes"
+	"errors"
+	"fmt"
+	"slices"
+	"testing"
+
+	// "io"
+
+	"github.com/justsushant/one2n-go-bootcamp/redis-go/redis"
+)
+
+var ErrKeyNotFound = errors.New("failed to find the key")
+
+type MockDB struct {
+	DelKeys []string
+	SetKeys []string
+	InvalidKeys []string
+}
+
+func (m *MockDB) Get(key string) (string, error) {
+	if key == "foo" {
+		return "bar", nil
+	} else {
+		return "invalid key", ErrKeyNotFound
+	}
+}
+
+func (m *MockDB) Set(key, val string) {
+	m.SetKeys = append(m.SetKeys, key)
+}
+
+func (m *MockDB) Del(key string) string {
+	if slices.Contains(m.DelKeys, key) {
+		return "nil"
+	} else if key == "foo" {
+		m.DelKeys = append(m.DelKeys, key)
+		return "1"
+	} else {
+		return "0"
+	}
+}
+
+func (m *MockDB) Incr(key string) error {
+	if slices.Contains(m.SetKeys, key) {
+		return nil
+	} else if slices.Contains(m.InvalidKeys, key) {
+		return redis.ErrKeyNotInteger
+	} else {
+		return nil
+	}
+}
+
+// type Server struct {
+// 	db redis.DbInterface
+// 	out io.Writer
+// 	// it will contain network related stuff later on
+// }
+
+func GetTestServer(db *MockDB) *Server {
+	var buf bytes.Buffer
+	return &Server{
+		db: db,
+		out: &buf,
+	}
+}
+
+// server init
+// command comes
+// parser parses it and send it to the relevant function like GetAction etc
+
+func TestCommandParser(t *testing.T) {
+	t.Run("SET command", func(t *testing.T) {
+		input := "SET foo bar"
+
+		mockDB := &MockDB{}
+		s := GetTestServer(mockDB)
+		s.ParseCommand(input)
+
+		fmt.Println("DB ", s.db)
+		fmt.Println("SetKeys ", mockDB.SetKeys)
+
+		if !slices.Contains(mockDB.SetKeys, "foo") {
+			t.Errorf("Expected the key to be inside %q but didn't found it", mockDB.SetKeys)
+			// t.Errorf("Expected output to contain %q but got %q instead", "bar", s.out.(*bytes.Buffer).String())
+		}
+
+		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte("OK")) {
+			t.Errorf("Expected output to contain 'OK' but got %s instead", s.out.(*bytes.Buffer).String())
+		}
+	})
+}

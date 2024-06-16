@@ -1,0 +1,2 @@
+fix below type of errors in makeCommand func
+(error) ERR unknown command 'sebfnk', with args beginning with: 'rkjg'

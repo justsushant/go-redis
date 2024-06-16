@@ -36,6 +36,12 @@ func (i *InMemoryStore) Get(key string) (string, bool) {
     return proxy, ok
 }
 
+func (i *InMemoryStore) Del(key string) {
+	i.RLock()
+	defer i.RUnlock()
+	delete(i.data, key)
+}
+
 func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
 		data: make(map[string]string),

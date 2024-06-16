@@ -5,4 +5,5 @@ type Store interface {
 	Get(key string) (string, bool)
     // Update(key, value string)
     Set(key, value string)
+    Del(key string)
 }
