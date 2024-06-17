@@ -63,7 +63,7 @@ func newSetCmd(server *Server) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			key := args[0]
 			value := args[1]
-			server.SetAction(key, value)
+			server.setAction(key, value)
 		},
 	}
 }
@@ -82,7 +82,7 @@ func newGetCmd(server *Server) *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		Run: func(cmd *cobra.Command, args []string) {
 			key := args[0]
-			server.GetAction(key)
+			server.getAction(key)
 		},
 	}
 }

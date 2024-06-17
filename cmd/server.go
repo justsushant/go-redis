@@ -41,6 +41,7 @@ const (
 	QUEUED string = "QUEUED"
 	EXEC string = "EXEC"
 	DISCARD string = "DISCARD"
+	COMPACT string = "COMPACT"
 )
 
 
@@ -53,87 +54,89 @@ type Server struct {
 	// it will contain network related stuff later on
 }
 
-func(s *Server) ParseCommand(input string) {
+func(s *Server) handleCommand(input string) {
+	// parse the input command
 	i, err := StringSplit(input)
 	if err != nil {
 		fmt.Fprintln(s.out, err)
 		return
 	}
 
+	// convert into command type
 	c, err := s.makeCommand(i)
 	if err != nil {
 		fmt.Fprintln(s.out, err)
 		return
 	}
 
+	// only add commands to multi tran if they aren't commands related to multi
 	if s.isMulti && c.name != EXEC && c.name != DISCARD && c.name != MULTI {
 		s.multiCommandArr = append(s.multiCommandArr, c)
 		fmt.Fprintln(s.out, QUEUED)
 		return
 	}
 
+	// take appropriate action
+	s.takeAction(c)
+}
+
+func(s *Server) takeAction(c Command) {
 	if c.name == SET {
 		key := c.key
 		val := c.val
 
-		s.SetAction(key, val)
+		s.setAction(key, val)
 	} else if c.name == GET {
 		key := c.key
 
-		s.GetAction(key)
+		s.getAction(key)
 	} else if c.name == DEL {
 		key := c.key
 
-		s.DelAction(key)
+		s.delAction(key)
 	} else if c.name == INCR {
 		key := c.key
 
-		s.IncrAction(key)
+		s.incrAction(key)
 	} else if c.name == INCRBY {
 		key := c.key
 		val := c.val
 
-		s.IncrbyAction(key, val)
+		s.incrbyAction(key, val)
 	} else if c.name == MULTI {
-		s.MultiAction()
+		s.multiAction()
 	} else if c.name == EXEC {
-		s.ExecAction()
+		s.execAction()
 	} else if c.name == DISCARD {
-		s.DiscardAction()
+		s.discardAction()
+	} else if c.name == COMPACT {
+		s.compactAction()
 	} else {
-		fmt.Fprintln(s.out, "Invalid Command")
+		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrUnknownCommand))
 	}
 }
 
 
-func(s *Server) SetAction(key, val string) {
+func(s *Server) setAction(key, val string) {
 	s.db.Set(key, val)
 	fmt.Fprintln(s.out, MssgOK)
 }
 
-func(s *Server) GetAction(key string) {
+func(s *Server) getAction(key string) {
 	val, err := s.db.Get(key)
 	if err != nil {
 		fmt.Fprint(s.out, redis.ErrKeyNotFound.Error())
 		return
 	}
-	// if err != nil {
-	// 	if errors.Is(err, redis.ErrKeyNotFound) {
-	// 		fmt.Fprint(s.out, redis.ErrKeyNotFound.Error())
-	// 		return
-	// 	}
-	// 	fmt.Fprintf(s.out, "Unexpected Error: %v\n", err)
-	// }
-
 	fmt.Fprintln(s.out, strconv.Quote(val))
 }
 
-func(s *Server) DelAction(key string) {
+func(s *Server) delAction(key string) {
 	val := s.db.Del(key)
 	fmt.Fprintln(s.out, val)
 }
 
-func(s *Server) IncrAction(key string) {
+func(s *Server) incrAction(key string) {
 	val, err := s.db.Incr(key)
 	if err != nil {
 		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", err))
@@ -142,7 +145,7 @@ func(s *Server) IncrAction(key string) {
 	fmt.Fprintln(s.out, val)
 }
 
-func(s *Server) IncrbyAction(key, val string) {
+func(s *Server) incrbyAction(key, val string) {
 	val, err := s.db.Incrby(key, val)
 	if err != nil {
 		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", err))
@@ -151,68 +154,52 @@ func(s *Server) IncrbyAction(key, val string) {
 	fmt.Fprintln(s.out, val)
 }
 
-func(s *Server) MultiAction() {
+func(s *Server) multiAction() {
+	// if multi tran is already in progress
 	if s.isMulti {
 		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrMultiCommandNested))
 		return
 	}
+	
 	s.isMulti = true
 	fmt.Fprintln(s.out, MssgOK)
 }
 
-func(s *Server) ExecAction() {
+func(s *Server) execAction() {
+	// can't exec without multi
 	if !s.isMulti {
 		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrExecWithoutMulti))
 		return
 	}
 
+	// if tran was discarded due to error
 	if s.isTranDiscarded {
-		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrTranAbortedDueToPrevError))
 		s.isMulti = false
 		s.isTranDiscarded = false
 		s.multiCommandArr = []Command{}
+
+		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrTranAbortedDueToPrevError))
 		return
 	}
 
+	// if no commands were given in a multi tran
 	if len(s.multiCommandArr) == 0 {
 		fmt.Fprintln(s.out, MssgEmptyArray)
 		s.isMulti = false
 		return
 	}
 
+	// normal execution
 	s.isMulti = false
 	for i, c := range s.multiCommandArr {
 		fmt.Fprintf(s.out, "%d) ", i+1)
-		s.ParseCommand(c.String())
-		// if c.name == SET {
-		// 	key := c.key
-		// 	val := c.val
-
-		// 	s.SetAction(key, val)
-		// } else if c.name == GET {
-		// 	key := c.key
-
-		// 	s.GetAction(key)
-		// } else if c.name == DEL {
-		// 	key := c.key
-
-		// 	s.DelAction(key)
-		// } else if c.name == INCR {
-		// 	key := c.key
-
-		// 	s.IncrAction(key)
-		// } else if c.name == INCRBY {
-		// 	key := c.key
-		// 	val := c.val
-
-		// 	s.IncrbyAction(key, val)
-		// }
+		s.takeAction(c)
 	}
 	s.multiCommandArr = []Command{}
-	// fmt.Fprintln(s.out, MssgOK)
 }
 
-func(s *Server) DiscardAction() {
+func(s *Server) discardAction() {
+	// can't discard without multi
 	if !s.isMulti {
 		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrDiscardWithoutMulti))
 		return
@@ -222,6 +209,19 @@ func(s *Server) DiscardAction() {
 	s.isTranDiscarded = false
 	s.multiCommandArr = []Command{}
 	fmt.Fprintln(s.out, MssgOK)
+}
+
+func(s *Server) compactAction() {
+	data := s.db.GetAll()
+	fmt.Println(len(data))
+	if len(data) == 0 {
+		fmt.Fprintf(s.out, "(nil)\n")
+		return
+	}
+
+	for k, v := range data {
+		fmt.Fprintf(s.out, "%s %s %s\n", SET, k, v)
+	}	
 }
 
 func StringSplit(input string) ([]string, error) {
@@ -314,6 +314,12 @@ func(s *Server) makeCommand(i []string) (Command, error) {
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: DISCARD}, nil
+	} else if i[0] == "COMPACT" || i[0] == "compact" {
+		if len(i) != 1 {
+			// if s.isMulti {s.isTranDiscarded = true}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}	
+		return Command{name: COMPACT}, nil
 	}
 	if s.isMulti {s.isTranDiscarded = true}
 	return Command{}, fmt.Errorf("(error) ERR %v '%s', with args beginning with: ", ErrUnknownCommand, i[0])

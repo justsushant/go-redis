@@ -18,6 +18,7 @@ var DefaultIntegerValue = "1"
 var Integer = "(integer)"
 
 type DbInterface interface {
+	GetAll() map[string]string
 	Set(key, val string)
 	Get(key string) (string, error)
 	Del(key string) string
@@ -95,4 +96,8 @@ func(d Db) Incrby(key, i string) (string, error) {
 	incrVal := num+vali
 	d.store.Set(key, strconv.Itoa(incrVal))
 	return Integer + " " + strconv.Itoa(incrVal), nil
+}
+
+func(d Db) GetAll() map[string]string {
+	return d.store.GetAll()
 }

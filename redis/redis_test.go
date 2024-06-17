@@ -29,6 +29,12 @@ func (m *mockStore) Del(key string) {
 	}
 }
 
+func (m *mockStore) GetAll() map[string]string {
+	return map[string]string{
+		m.key: m.val,
+	}
+}
+
 func GetTestDB(key, val string) *Db {
 	return &Db{
 		store: &mockStore{
