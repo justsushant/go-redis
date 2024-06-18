@@ -1,15 +1,12 @@
-package cmd
+package server
 
 import (
 	"bytes"
 	"errors"
 	"strconv"
 	"testing"
-	// "strings"
 
-	// "io"
-
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/redis"
+	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
 )
 
 var ErrKeyNotFound = errors.New("failed to find the key")
@@ -46,7 +43,7 @@ func (m *mockDB) Incr(key string) (string, error) {
 	if m.key == key {
 		i, err := strconv.Atoi(m.val)
 		if err != nil {
-			return "", redis.ErrKeyNotInteger
+			return "", db.ErrKeyNotInteger
 		}
 		i+=1
 		m.val = strconv.Itoa(i)
@@ -61,13 +58,13 @@ func (m *mockDB) Incr(key string) (string, error) {
 func (m *mockDB) Incrby(key, num string) (string, error) {
 	i2, err := strconv.Atoi(num)
 	if err != nil {
-		return "", redis.ErrKeyNotInteger
+		return "", db.ErrKeyNotInteger
 	}
 
 	if m.key == key {
 		i, err := strconv.Atoi(m.val)
 		if err != nil {
-			return "", redis.ErrKeyNotInteger
+			return "", db.ErrKeyNotInteger
 		}
 		incrByVal := i+i2
 		m.val += strconv.Itoa(incrByVal)
@@ -93,8 +90,8 @@ func (m *mockDB) GetAll() map[string]string {
 func GetTestServer(db *mockDB) *Server {
 	var buf bytes.Buffer
 	return &Server{
-		db: db,
-		out: &buf,
+		Db: db,
+		Out: &buf,
 	}
 }
 
@@ -111,8 +108,8 @@ func TestCommandParser(t *testing.T) {
 			t.Errorf("Expected the key to be %q but didn't found it", md.key)
 		}
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -124,8 +121,8 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -137,8 +134,8 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -150,35 +147,35 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("GET command with deleted key", func(t *testing.T) {
 		input := "GET foo"
-		expOut := redis.ErrKeyNotFound.Error()
+		expOut := db.ErrKeyNotFound.Error()
 
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md)
 		s.handleCommand("DEL foo")
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("GET command with invalid key", func(t *testing.T) {
 		input := "GET foo"
-		expOut := redis.ErrKeyNotFound.Error()
+		expOut := db.ErrKeyNotFound.Error()
 
 		md := &mockDB{}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -190,14 +187,14 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("DEL command with valid key", func(t *testing.T) {
 		input := "DEL foo"
-		expOut := redis.DeleteSuccessMessage
+		expOut := db.DeleteSuccessMessage
 
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md)
@@ -207,21 +204,21 @@ func TestCommandParser(t *testing.T) {
 			t.Errorf("Expected the key to be deleted but found %q", md.key)
 		}
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("DEL command with invalid key", func(t *testing.T) {
 		input := "DEL foo"
-		expOut := redis.DeleteFailedMessage
+		expOut := db.DeleteFailedMessage
 
 		md := &mockDB{}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -233,47 +230,47 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("INCR command with invalid key", func(t *testing.T) {
 		input := "INCR foo"
-		expOut := redis.SetSuccessMessage
+		expOut := db.SetSuccessMessage
 
 		md := &mockDB{}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("INCR command with invalid value (string)", func(t *testing.T) {
 		input := "INCR foo"
-		expOut := redis.ErrKeyNotInteger.Error()
+		expOut := db.ErrKeyNotInteger.Error()
 
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("INCR command with invalid value (float)", func(t *testing.T) {
 		input := "INCR foo"
-		expOut := redis.ErrKeyNotInteger.Error()
+		expOut := db.ErrKeyNotInteger.Error()
 
 		md := &mockDB{key: "foo", val: "10.5"}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -285,8 +282,8 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -298,60 +295,60 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("INCRBY command with invalid key and passed val is string", func(t *testing.T) {
 		input := "INCRBY foo bar"
-		expOut := redis.ErrKeyNotInteger.Error()
+		expOut := db.ErrKeyNotInteger.Error()
 
 		md := &mockDB{}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 	t.Run("INCRBY command with passed key is string with integer val set", func(t *testing.T) {
 		input := "INCRBY foo bar"
 
-		expOut := redis.ErrKeyNotInteger.Error()
+		expOut := db.ErrKeyNotInteger.Error()
 
 		md := &mockDB{key: "foo", val: "4"}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("INCRBY command with invalid value (string)", func(t *testing.T) {
 		input := "INCRBY foo 5"
-		expOut := redis.ErrKeyNotInteger.Error()
+		expOut := db.ErrKeyNotInteger.Error()
 
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
 	t.Run("INCRBY command with invalid value (float)", func(t *testing.T) {
 		input := "INCRBY foo 5"
-		expOut := redis.ErrKeyNotInteger.Error()
+		expOut := db.ErrKeyNotInteger.Error()
 
 		md := &mockDB{key: "foo", val: "10.5"}
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -363,8 +360,8 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -376,8 +373,8 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -390,8 +387,8 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -404,11 +401,11 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut1)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut1, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut1)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut1, s.Out.(*bytes.Buffer).String())
 		}
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut2)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut2, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut2)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut2, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -420,8 +417,8 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 
@@ -434,8 +431,8 @@ func TestCommandParser(t *testing.T) {
 		s := GetTestServer(md)
 		s.handleCommand(input)
 
-		if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.out.(*bytes.Buffer).String())
+		if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, s.Out.(*bytes.Buffer).String())
 		}
 	})
 }
@@ -451,11 +448,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 
@@ -469,11 +466,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 
@@ -487,11 +484,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 
@@ -505,11 +502,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 
@@ -523,11 +520,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 
@@ -541,11 +538,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 
@@ -559,11 +556,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 
@@ -577,11 +574,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 
@@ -595,11 +592,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 			s.handleCommand(input)
 
 			
-			if !bytes.Contains(s.out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.out.(*bytes.Buffer).String())
+			if !bytes.Contains(s.Out.(*bytes.Buffer).Bytes(), []byte(expOut[i])) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], s.Out.(*bytes.Buffer).String())
 			}
 
-			s.out.(*bytes.Buffer).Reset()
+			s.Out.(*bytes.Buffer).Reset()
 		}
 	})
 }

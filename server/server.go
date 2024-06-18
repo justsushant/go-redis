@@ -1,13 +1,16 @@
-package cmd
+package server
 
 import (
 	"errors"
-	"strconv"
 	"fmt"
 	"io"
 	"regexp"
+	"strconv"
+	"strings"
+	"bufio"
+	"os"
 
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/redis"
+	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
 )
 
 type Command struct {
@@ -20,14 +23,16 @@ func (c *Command) String() string {
 	return fmt.Sprintf("%s %s %s", c.name, c.key, c.val)
 }
 
-var ErrUnknownCommand = errors.New("unknown command")
-var ErrWrongNumberOfArgs = errors.New("wrong number of arguments")
-var ErrExecWithoutMulti = errors.New("exec without multi")
-var ErrDiscardWithoutMulti = errors.New("discard without multi")
-var ErrTranAbortedDueToPrevError = errors.New("transaction discarded because of previous errors")
-var ErrMultiCommandNested = errors.New("multi calls can not be nested")
-var MssgEmptyArray = "(empty array)"
-var MssgOK = "OK"
+var (
+	ErrUnknownCommand = errors.New("unknown command")
+	ErrWrongNumberOfArgs = errors.New("wrong number of arguments")
+	ErrExecWithoutMulti = errors.New("exec without multi")
+	ErrDiscardWithoutMulti = errors.New("discard without multi")
+	ErrTranAbortedDueToPrevError = errors.New("transaction discarded because of previous errors")
+	ErrMultiCommandNested = errors.New("multi calls can not be nested")
+	MssgEmptyArray = "(empty array)"
+	MssgOK = "OK"
+)
 // var ErrInvalidArguments = errors.New("invalid argument(s)")
 // var ErrKeyNotFound = errors.New("(nil)")
 
@@ -46,33 +51,62 @@ const (
 
 
 type Server struct {
-	db redis.DbInterface
-	out io.Writer
+	Db db.DbInterface
+	Out io.Writer
 	isMulti bool
 	multiCommandArr []Command
 	isTranDiscarded bool
 	// it will contain network related stuff later on
 }
 
+// func(s *Server) Run(input string) {
+
+// }
+
+func (s *Server) Start() {
+    // Infinite loop to accept commands until an exit command is issued
+    for {
+        fmt.Fprint(s.Out, "> ")
+        reader := bufio.NewReader(os.Stdin)
+        input, err := reader.ReadString('\n')
+        if err != nil {
+            fmt.Fprintln(s.Out, "Error reading input:", err)
+            continue
+        }
+
+        // Trim the newline character from the input
+        input = strings.TrimSpace(input)
+
+        // Check for exit command to break the loop
+        if strings.ToLower(input) == "exit" {
+            fmt.Fprintln(s.Out, "Exiting...")
+            break
+        }
+
+        // Pass the command to the handleCommand method
+        s.handleCommand(input)
+    }
+}
+
 func(s *Server) handleCommand(input string) {
 	// parse the input command
 	i, err := StringSplit(input)
 	if err != nil {
-		fmt.Fprintln(s.out, err)
+		fmt.Fprintln(s.Out, err)
 		return
 	}
 
 	// convert into command type
 	c, err := s.makeCommand(i)
 	if err != nil {
-		fmt.Fprintln(s.out, err)
+		fmt.Fprintln(s.Out, err)
 		return
 	}
 
 	// only add commands to multi tran if they aren't commands related to multi
 	if s.isMulti && c.name != EXEC && c.name != DISCARD && c.name != MULTI {
 		s.multiCommandArr = append(s.multiCommandArr, c)
-		fmt.Fprintln(s.out, QUEUED)
+		fmt.Fprintln(s.Out, QUEUED)
 		return
 	}
 
@@ -81,147 +115,137 @@ func(s *Server) handleCommand(input string) {
 }
 
 func(s *Server) takeAction(c Command) {
-	if c.name == SET {
-		key := c.key
-		val := c.val
-
-		s.setAction(key, val)
-	} else if c.name == GET {
-		key := c.key
-
-		s.getAction(key)
-	} else if c.name == DEL {
-		key := c.key
-
-		s.delAction(key)
-	} else if c.name == INCR {
-		key := c.key
-
-		s.incrAction(key)
-	} else if c.name == INCRBY {
-		key := c.key
-		val := c.val
-
-		s.incrbyAction(key, val)
-	} else if c.name == MULTI {
+	switch c.name {
+	case SET:
+		s.setAction(c.key, c.val)
+	case GET:
+		s.getAction(c.key)
+	case DEL:
+		s.delAction(c.key)
+	case INCR:
+		s.incrAction(c.key)
+	case INCRBY:
+		s.incrbyAction(c.key, c.val)
+	case MULTI:
 		s.multiAction()
-	} else if c.name == EXEC {
+	case EXEC:
 		s.execAction()
-	} else if c.name == DISCARD {
+	case DISCARD:
 		s.discardAction()
-	} else if c.name == COMPACT {
+	case COMPACT:
 		s.compactAction()
-	} else {
-		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrUnknownCommand))
+	default:
+		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrUnknownCommand))
 	}
 }
 
 
 func(s *Server) setAction(key, val string) {
-	s.db.Set(key, val)
-	fmt.Fprintln(s.out, MssgOK)
+	s.Db.Set(key, val)
+	fmt.Fprintln(s.Out, MssgOK)
 }
 
 func(s *Server) getAction(key string) {
-	val, err := s.db.Get(key)
+	val, err := s.Db.Get(key)
 	if err != nil {
-		fmt.Fprint(s.out, redis.ErrKeyNotFound.Error())
+		fmt.Fprintln(s.Out, db.ErrKeyNotFound.Error())
 		return
 	}
-	fmt.Fprintln(s.out, strconv.Quote(val))
+	fmt.Fprintln(s.Out, strconv.Quote(val))
 }
 
 func(s *Server) delAction(key string) {
-	val := s.db.Del(key)
-	fmt.Fprintln(s.out, val)
+	val := s.Db.Del(key)
+	fmt.Fprintln(s.Out, val)
 }
 
 func(s *Server) incrAction(key string) {
-	val, err := s.db.Incr(key)
+	val, err := s.Db.Incr(key)
 	if err != nil {
-		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", err))
+		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", err))
 		return
 	}
-	fmt.Fprintln(s.out, val)
+	fmt.Fprintln(s.Out, val)
 }
 
 func(s *Server) incrbyAction(key, val string) {
-	val, err := s.db.Incrby(key, val)
+	val, err := s.Db.Incrby(key, val)
 	if err != nil {
-		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", err))
+		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", err))
 		return
 	}
-	fmt.Fprintln(s.out, val)
+	fmt.Fprintln(s.Out, val)
 }
 
 func(s *Server) multiAction() {
 	// if multi tran is already in progress
 	if s.isMulti {
-		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrMultiCommandNested))
+		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrMultiCommandNested))
 		return
 	}
 	
 	s.isMulti = true
-	fmt.Fprintln(s.out, MssgOK)
+	fmt.Fprintln(s.Out, MssgOK)
 }
 
 func(s *Server) execAction() {
 	// can't exec without multi
 	if !s.isMulti {
-		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrExecWithoutMulti))
+		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrExecWithoutMulti))
 		return
 	}
 
 	// if tran was discarded due to error
 	if s.isTranDiscarded {
-		s.isMulti = false
-		s.isTranDiscarded = false
-		s.multiCommandArr = []Command{}
+		s.resetTran()
 
-		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrTranAbortedDueToPrevError))
+		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrTranAbortedDueToPrevError))
 		return
 	}
 
 	// if no commands were given in a multi tran
 	if len(s.multiCommandArr) == 0 {
-		fmt.Fprintln(s.out, MssgEmptyArray)
+		fmt.Fprintln(s.Out, MssgEmptyArray)
 		s.isMulti = false
 		return
 	}
 
 	// normal execution
-	s.isMulti = false
 	for i, c := range s.multiCommandArr {
-		fmt.Fprintf(s.out, "%d) ", i+1)
+		fmt.Fprintf(s.Out, "%d) ", i+1)
 		s.takeAction(c)
 	}
-	s.multiCommandArr = []Command{}
+	s.resetTran()
 }
 
 func(s *Server) discardAction() {
 	// can't discard without multi
 	if !s.isMulti {
-		fmt.Fprintln(s.out, fmt.Errorf("(error) ERR %v", ErrDiscardWithoutMulti))
+		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrDiscardWithoutMulti))
 		return
 	}
 
-	s.isMulti = false
-	s.isTranDiscarded = false
-	s.multiCommandArr = []Command{}
-	fmt.Fprintln(s.out, MssgOK)
+	s.resetTran()
+	fmt.Fprintln(s.Out, MssgOK)
 }
 
 func(s *Server) compactAction() {
-	data := s.db.GetAll()
+	data := s.Db.GetAll()
 	fmt.Println(len(data))
 	if len(data) == 0 {
-		fmt.Fprintf(s.out, "(nil)\n")
+		fmt.Fprintf(s.Out, "(nil)\n")
 		return
 	}
 
 	for k, v := range data {
-		fmt.Fprintf(s.out, "%s %s %s\n", SET, k, v)
+		fmt.Fprintf(s.Out, "%s %s %s\n", SET, k, v)
 	}	
+}
+
+func(s *Server) resetTran() {
+	s.isMulti = false
+	s.isTranDiscarded = false
+	s.multiCommandArr = []Command{}
 }
 
 func StringSplit(input string) ([]string, error) {
@@ -302,9 +326,7 @@ func(s *Server) makeCommand(i []string) (Command, error) {
 		return Command{name: MULTI}, nil
 	} else if i[0] == "EXEC" || i[0] == "exec" {
 		if len(i) != 1 {
-			s.isMulti = false
-			s.isTranDiscarded = false
-			s.multiCommandArr = []Command{}
+			s.resetTran()
 			return Command{}, fmt.Errorf("(error) EXECABORT Transaction discarded because of: %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: EXEC}, nil

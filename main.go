@@ -1,11 +1,18 @@
-/*
-Copyright © 2024 NAME HERE <EMAIL ADDRESS>
-
-*/
 package main
 
-import "github.com/justsushant/one2n-go-bootcamp/redis-go/cmd"
+import (
+	"os"
+	"github.com/justsushant/one2n-go-bootcamp/redis-go/server"
+	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
+	"github.com/justsushant/one2n-go-bootcamp/redis-go/store/inMemoryStore"
+)
 
 func main() {
-	cmd.Execute()
+	s := &server.Server{
+		Db:  db.GetNewDB(inMemoryStore.NewInMemoryStore()),
+		Out: os.Stdout,
+	}
+
+	s.Start();
+
 }
