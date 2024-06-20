@@ -7,8 +7,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
-	"bufio"
-	"os"
+	"net"
 
 	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
 )
@@ -48,67 +47,109 @@ const (
 	EXEC string = "EXEC"
 	DISCARD string = "DISCARD"
 	COMPACT string = "COMPACT"
+	PING string = "PING"
+	PONG string = "PONG"
+	DISCONNECT string = "DISCONNECT"
 )
 
 type Server struct {
 	Db db.DbInterface
-	Out io.Writer
 	isMulti bool
 	multiCommandArr []Command
 	isTranDiscarded bool
 	// it will contain network related stuff later on
+	Listener net.Listener
 }
 
-func (s *Server) Start() {
-    // Infinite loop to accept commands until an exit command is issued
+func(s *Server) Start() {
+	for {
+		conn, err := s.Listener.Accept()
+		if err != nil {
+			fmt.Fprintf(conn, "Error while accepting connection: %v", err)
+		}
+		
+		// launching new go routine for each connection
+		go s.handleConnection(conn)
+	}
+}
+
+// for cli application
+// func (s *Server) Start() {
+//     // Infinite loop to accept commands until an exit command is issued
+//     for {
+//         fmt.Fprint(s.Out, "> ")
+//         reader := bufio.NewReader(os.Stdin)
+//         input, err := reader.ReadString('\n')
+//         if err != nil {
+//             fmt.Fprintln(s.Out, "Error reading input:", err)
+//             continue
+//         }
+
+//         // Trim the newline character from the input
+//         input = strings.TrimSpace(input)
+
+//         // Check for exit command to break the loop
+//         if strings.ToLower(input) == "exit" {
+//             fmt.Fprintln(s.Out, "Exiting...")
+//             break
+//         }
+
+//         // Pass the command to the handleCommand method
+//         s.handleCommand(input)
+//     }
+// }
+
+
+func(s *Server) handleConnection(conn net.Conn) {
+	defer conn.Close()
+
+	buf := make([]byte, 1024)
     for {
-        fmt.Fprint(s.Out, "> ")
-        reader := bufio.NewReader(os.Stdin)
-        input, err := reader.ReadString('\n')
+        n, err := conn.Read(buf)
         if err != nil {
-            fmt.Fprintln(s.Out, "Error reading input:", err)
-            continue
-        }
-
-        // Trim the newline character from the input
-        input = strings.TrimSpace(input)
-
-        // Check for exit command to break the loop
-        if strings.ToLower(input) == "exit" {
-            fmt.Fprintln(s.Out, "Exiting...")
+            if err != io.EOF {
+                fmt.Println("Error reading:", err.Error())
+            }
             break
         }
 
-        // Pass the command to the handleCommand method
-        s.handleCommand(input)
+		s.handleCommand(string(buf[:n]), conn)
     }
 }
 
-func(s *Server) handleCommand(input string) {
+func(s *Server) handleCommand(input string, out io.Writer) {
 	// parse the input command
 	i, err := StringSplit(input)
 	if err != nil {
-		fmt.Fprintln(s.Out, err)
+		fmt.Fprintln(out, err)
 		return
 	}
 
 	// convert into command type
 	c, err := s.makeCommand(i)
 	if err != nil {
-		fmt.Fprintln(s.Out, err)
+		fmt.Fprintln(out, err)
 		return
+	}
+
+	// handling disconnect
+	if c.name == DISCONNECT {
+		if conn, ok := out.(net.Conn); ok {
+		    conn.Close()
+		    return
+		}
 	}
 
 	// only add commands to multi tran if they aren't commands related to multi
 	if s.isMulti && c.name != EXEC && c.name != DISCARD && c.name != MULTI {
 		s.multiCommandArr = append(s.multiCommandArr, c)
-		fmt.Fprintln(s.Out, QUEUED)
+		fmt.Fprintln(out, QUEUED)
 		return
 	}
 
 	// take appropriate action
 	resp := s.takeAction(c)
-	fmt.Fprintln(s.Out, resp)
+	fmt.Fprintln(out, resp)
 }
 
 func(s *Server) takeAction(c Command) string {
@@ -131,11 +172,16 @@ func(s *Server) takeAction(c Command) string {
 		return s.discardAction()
 	case COMPACT:
 		return s.compactAction()
+	case PING:
+		return s.pingAction()
 	default:
 		return fmt.Errorf("(error) ERR %v", ErrUnknownCommand).Error()
 	}
 }
 
+func (s *Server) pingAction() string {
+	return PONG
+}
 
 func(s *Server) setAction(key, val string) string {
 	s.Db.Set(key, val)
@@ -248,7 +294,8 @@ func(s *Server) resetTran() {
 }
 
 func StringSplit(input string) ([]string, error) {
-	isValid := isValidCommand(input)
+	trimmedInput := strings.TrimSpace(input)
+	isValid := isValidCommand(trimmedInput)
 	if !isValid {
 		return nil, ErrUnknownCommand
 	}
@@ -261,7 +308,7 @@ func StringSplit(input string) ([]string, error) {
 	currentString := []rune{}
 	isInsideQuote := false
 
-	for _, v := range input {
+	for _, v := range trimmedInput {
 		if v == sq || v == dq {
 			isInsideQuote = !isInsideQuote
 		}
@@ -337,10 +384,22 @@ func(s *Server) makeCommand(i []string) (Command, error) {
 		return Command{name: DISCARD}, nil
 	} else if i[0] == "COMPACT" || i[0] == "compact" {
 		if len(i) != 1 {
-			// if s.isMulti {s.isTranDiscarded = true}
+			if s.isMulti {s.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: COMPACT}, nil
+	} else if i[0] == "PING" || i[0] == "ping" {
+		if len(i) != 1 {
+			if s.isMulti {s.isTranDiscarded = true}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: PING}, nil
+	} else if i[0] == "DISCONNECT" || i[0] == "disconnect" {
+		if len(i) != 1 {
+			if s.isMulti {s.isTranDiscarded = true}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: DISCONNECT}, nil
 	}
 	if s.isMulti {s.isTranDiscarded = true}
 	return Command{}, fmt.Errorf("(error) ERR %v '%s', with args beginning with: ", ErrUnknownCommand, i[0])

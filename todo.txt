@@ -18,3 +18,7 @@ Improvements:
 - The transaction discard logic in `makeCommand` is repeated; this could be refactored into a separate method to reduce duplication.
 - The regular expression in `isValidCommand` might not cover all valid Redis command patterns, especially for commands with more complex argument structures.
 - The handling of quotes in `StringSplit` does not account for escaped quotes within quoted strings, which could lead to incorrect splitting in some cases.
+
+
+
+writing test for disconnection of server pending
