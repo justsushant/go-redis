@@ -32,6 +32,7 @@ var (
 	ErrMultiCommandNested = errors.New("multi calls can not be nested")
 	MssgEmptyArray = "(empty array)"
 	MssgOK = "OK"
+	MssgNil = "(nil)"
 )
 // var ErrInvalidArguments = errors.New("invalid argument(s)")
 // var ErrKeyNotFound = errors.New("(nil)")
@@ -49,7 +50,6 @@ const (
 	COMPACT string = "COMPACT"
 )
 
-
 type Server struct {
 	Db db.DbInterface
 	Out io.Writer
@@ -58,10 +58,6 @@ type Server struct {
 	isTranDiscarded bool
 	// it will contain network related stuff later on
 }
-
-// func(s *Server) Run(input string) {
-
-// }
 
 func (s *Server) Start() {
     // Infinite loop to accept commands until an exit command is issued
@@ -111,135 +107,138 @@ func(s *Server) handleCommand(input string) {
 	}
 
 	// take appropriate action
-	s.takeAction(c)
+	resp := s.takeAction(c)
+	fmt.Fprintln(s.Out, resp)
 }
 
-func(s *Server) takeAction(c Command) {
+func(s *Server) takeAction(c Command) string {
 	switch c.name {
 	case SET:
-		s.setAction(c.key, c.val)
+		return s.setAction(c.key, c.val)
 	case GET:
-		s.getAction(c.key)
+		return s.getAction(c.key)
 	case DEL:
-		s.delAction(c.key)
+		return s.delAction(c.key)
 	case INCR:
-		s.incrAction(c.key)
+		return s.incrAction(c.key)
 	case INCRBY:
-		s.incrbyAction(c.key, c.val)
+		return s.incrbyAction(c.key, c.val)
 	case MULTI:
-		s.multiAction()
+		return s.multiAction()
 	case EXEC:
-		s.execAction()
+		return s.execAction()
 	case DISCARD:
-		s.discardAction()
+		return s.discardAction()
 	case COMPACT:
-		s.compactAction()
+		return s.compactAction()
 	default:
-		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrUnknownCommand))
+		return fmt.Errorf("(error) ERR %v", ErrUnknownCommand).Error()
 	}
 }
 
 
-func(s *Server) setAction(key, val string) {
+func(s *Server) setAction(key, val string) string {
 	s.Db.Set(key, val)
-	fmt.Fprintln(s.Out, MssgOK)
+	return MssgOK
 }
 
-func(s *Server) getAction(key string) {
+func(s *Server) getAction(key string) string {
 	val, err := s.Db.Get(key)
 	if err != nil {
-		fmt.Fprintln(s.Out, db.ErrKeyNotFound.Error())
-		return
+		return db.ErrKeyNotFound.Error()
 	}
-	fmt.Fprintln(s.Out, strconv.Quote(val))
+	return strconv.Quote(val)
 }
 
-func(s *Server) delAction(key string) {
+func(s *Server) delAction(key string) string {
 	val := s.Db.Del(key)
-	fmt.Fprintln(s.Out, val)
+	return val
 }
 
-func(s *Server) incrAction(key string) {
+func(s *Server) incrAction(key string) string {
 	val, err := s.Db.Incr(key)
 	if err != nil {
-		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", err))
-		return
+		return fmt.Errorf("(error) ERR %v", err).Error()
 	}
-	fmt.Fprintln(s.Out, val)
+	return val
 }
 
-func(s *Server) incrbyAction(key, val string) {
+func(s *Server) incrbyAction(key, val string) string {
 	val, err := s.Db.Incrby(key, val)
 	if err != nil {
-		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", err))
-		return
+		return fmt.Errorf("(error) ERR %v", err).Error()
 	}
-	fmt.Fprintln(s.Out, val)
+	return val
 }
 
-func(s *Server) multiAction() {
+func(s *Server) multiAction() string {
 	// if multi tran is already in progress
 	if s.isMulti {
-		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrMultiCommandNested))
-		return
+		return fmt.Errorf("(error) ERR %v", ErrMultiCommandNested).Error()
 	}
 	
 	s.isMulti = true
-	fmt.Fprintln(s.Out, MssgOK)
+	return MssgOK
 }
 
-func(s *Server) execAction() {
+func(s *Server) execAction() string {
 	// can't exec without multi
 	if !s.isMulti {
-		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrExecWithoutMulti))
-		return
+		return fmt.Errorf("(error) ERR %v", ErrExecWithoutMulti).Error()
 	}
 
 	// if tran was discarded due to error
 	if s.isTranDiscarded {
 		s.resetTran()
-
-		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrTranAbortedDueToPrevError))
-		return
+		return fmt.Errorf("(error) ERR %v", ErrTranAbortedDueToPrevError).Error()
 	}
 
 	// if no commands were given in a multi tran
 	if len(s.multiCommandArr) == 0 {
-		fmt.Fprintln(s.Out, MssgEmptyArray)
-		s.isMulti = false
-		return
+		s.resetTran()
+		return MssgEmptyArray
 	}
 
 	// normal execution
+	var builder strings.Builder
+	lastCmdArrIdx := len(s.multiCommandArr) - 1
 	for i, c := range s.multiCommandArr {
-		fmt.Fprintf(s.Out, "%d) ", i+1)
-		s.takeAction(c)
+		builder.WriteString(fmt.Sprintf("%d) ", i+1))
+
+		// avoids the extra newline in final output for the last command in tran
+		if lastCmdArrIdx == i {
+			builder.WriteString(s.takeAction(c))
+		} else {
+			builder.WriteString(fmt.Sprintln(s.takeAction(c)))
+		}
+		
 	}
+
 	s.resetTran()
+	return builder.String()
 }
 
-func(s *Server) discardAction() {
+func(s *Server) discardAction() string {
 	// can't discard without multi
 	if !s.isMulti {
-		fmt.Fprintln(s.Out, fmt.Errorf("(error) ERR %v", ErrDiscardWithoutMulti))
-		return
+		return fmt.Errorf("(error) ERR %v", ErrDiscardWithoutMulti).Error()
 	}
 
 	s.resetTran()
-	fmt.Fprintln(s.Out, MssgOK)
+	return MssgOK
 }
 
-func(s *Server) compactAction() {
+func(s *Server) compactAction() string {
 	data := s.Db.GetAll()
-	fmt.Println(len(data))
 	if len(data) == 0 {
-		fmt.Fprintf(s.Out, "(nil)\n")
-		return
+		return MssgNil
 	}
 
+	var builder strings.Builder
 	for k, v := range data {
-		fmt.Fprintf(s.Out, "%s %s %s\n", SET, k, v)
-	}	
+		builder.WriteString(fmt.Sprintf("%s %s %s\n", SET, k, v))
+	}
+	return builder.String()
 }
 
 func(s *Server) resetTran() {
