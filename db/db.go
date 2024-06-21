@@ -63,7 +63,7 @@ func(d Db) Incr(key string) (string, error) {
 	val, ok := d.store.Get(key)
 	if !ok {
 		d.store.Set(key, DefaultIntegerValue)
-		return SetSuccessMessage, nil
+		return Integer + " " + DefaultIntegerValue, nil
 	}
 
 	i, err := strconv.Atoi(val)

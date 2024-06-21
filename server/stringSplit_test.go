@@ -7,11 +7,14 @@ import (
 )
 
 func TestStringSplit(t *testing.T) {
+	md := &mockDB{}
+	s := GetTestServer(md, nil)
+	
 	t.Run("command without quotes", func(t *testing.T) {
 		input := "SET foo bar"
 		expOut := []string{"SET", "foo", "bar"}
 
-		out, err := StringSplit(input)
+		out, err := s.stringSplit(input)
 		if err != nil {
 			t.Fatalf("Unexpected error occured : %v", err)
 		}
@@ -25,7 +28,7 @@ func TestStringSplit(t *testing.T) {
 		input := `SET foo "bar in quotes"`
 		expOut := []string{"SET", "foo", "bar in quotes"}
 
-		out, err := StringSplit(input)
+		out, err := s.stringSplit(input)
 		if err != nil {
 			t.Fatalf("Unexpected error occured : %v", err)
 		}
@@ -39,7 +42,7 @@ func TestStringSplit(t *testing.T) {
 		input := `SET "foo in quotes" bar`
 		expOut := []string{"SET", "foo in quotes", "bar"}
 
-		out, err := StringSplit(input)
+		out, err := s.stringSplit(input)
 		if err != nil {
 			t.Fatalf("Unexpected error occured : %v", err)
 		}
@@ -53,7 +56,7 @@ func TestStringSplit(t *testing.T) {
 		input := `SET "foo in quotes" "bar in quotes"`
 		expOut := []string{"SET", "foo in quotes", "bar in quotes"}
 
-		out, err := StringSplit(input)
+		out, err := s.stringSplit(input)
 		if err != nil {
 			t.Fatalf("Unexpected error occured : %v", err)
 		}
@@ -67,7 +70,7 @@ func TestStringSplit(t *testing.T) {
 		input := `"SET" "foo in quotes" "bar in quotes"`
 		expOut := []string{"SET", "foo in quotes", "bar in quotes"}
 
-		out, err := StringSplit(input)
+		out, err := s.stringSplit(input)
 		if err != nil {
 			t.Fatalf("Unexpected error occured : %v", err)
 		}
@@ -81,7 +84,7 @@ func TestStringSplit(t *testing.T) {
 		input := `SET foo bar"in"quotes"`
 		expOut := ErrUnknownCommand
 
-		_, err := StringSplit(input)
+		_, err := s.stringSplit(input)
 		if err == nil {
 			t.Fatal("Expected error but got none")
 		}
@@ -97,7 +100,7 @@ func TestStringSplit(t *testing.T) {
 		input := `SET "foo in quotes "bar in quotes"`
 		expOut := ErrUnknownCommand
 
-		_, err := StringSplit(input)
+		_, err := s.stringSplit(input)
 		if err == nil {
 			t.Fatal("Expected error but got none")
 		}
@@ -113,7 +116,7 @@ func TestStringSplit(t *testing.T) {
 		input := `"SET "foo in quotes "bar in quotes"`
 		expOut := ErrUnknownCommand
 
-		_, err := StringSplit(input)
+		_, err := s.stringSplit(input)
 		if err == nil {
 			t.Fatal("Expected error but got none")
 		}

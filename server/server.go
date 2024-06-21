@@ -12,16 +12,6 @@ import (
 	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
 )
 
-type Command struct {
-	name string
-	key string
-	val string
-}
-
-func (c *Command) String() string {
-	return fmt.Sprintf("%s %s %s", c.name, c.key, c.val)
-}
-
 var (
 	ErrUnknownCommand = errors.New("unknown command")
 	ErrWrongNumberOfArgs = errors.New("wrong number of arguments")
@@ -52,11 +42,27 @@ const (
 	DISCONNECT string = "DISCONNECT"
 )
 
-type Server struct {
-	Db db.DbInterface
-	isMulti bool
+type Command struct {
+	name string
+	key string
+	val string
+}
+
+func (c *Command) String() string {
+	return fmt.Sprintf("%s %s %s", c.name, c.key, c.val)
+}
+
+type TranState struct {
+	isMulti         bool
 	multiCommandArr []Command
 	isTranDiscarded bool
+}
+
+type Server struct {
+	Db db.DbInterface
+	// isMulti bool
+	// multiCommandArr []Command
+	// isTranDiscarded bool
 	// it will contain network related stuff later on
 	Listener net.Listener
 }
@@ -69,7 +75,7 @@ func(s *Server) Start() {
 		}
 		
 		// launching new go routine for each connection
-		go s.handleConnection(conn)
+		go s.handleConnection(conn, &TranState{})
 	}
 }
 
@@ -100,7 +106,7 @@ func(s *Server) Start() {
 // }
 
 
-func(s *Server) handleConnection(conn net.Conn) {
+func(s *Server) handleConnection(conn net.Conn, ts *TranState) {
 	defer conn.Close()
 
 	buf := make([]byte, 1024)
@@ -113,20 +119,20 @@ func(s *Server) handleConnection(conn net.Conn) {
             break
         }
 
-		s.handleCommand(string(buf[:n]), conn)
+		s.handleCommand(string(buf[:n]), conn, ts)
     }
 }
 
-func(s *Server) handleCommand(input string, out io.Writer) {
+func(s *Server) handleCommand(input string, out io.Writer, ts *TranState) {
 	// parse the input command
-	i, err := StringSplit(input)
+	i, err := s.stringSplit(input)
 	if err != nil {
 		fmt.Fprintln(out, err)
 		return
 	}
 
 	// convert into command type
-	c, err := s.makeCommand(i)
+	c, err := s.makeCommand(i, ts)
 	if err != nil {
 		fmt.Fprintln(out, err)
 		return
@@ -141,18 +147,18 @@ func(s *Server) handleCommand(input string, out io.Writer) {
 	}
 
 	// only add commands to multi tran if they aren't commands related to multi
-	if s.isMulti && c.name != EXEC && c.name != DISCARD && c.name != MULTI {
-		s.multiCommandArr = append(s.multiCommandArr, c)
+	if ts.isMulti && c.name != EXEC && c.name != DISCARD && c.name != MULTI {
+		ts.multiCommandArr = append(ts.multiCommandArr, c)
 		fmt.Fprintln(out, QUEUED)
 		return
 	}
 
 	// take appropriate action
-	resp := s.takeAction(c)
+	resp := s.takeAction(c, ts)
 	fmt.Fprintln(out, resp)
 }
 
-func(s *Server) takeAction(c Command) string {
+func(s *Server) takeAction(c Command, ts *TranState) string {
 	switch c.name {
 	case SET:
 		return s.setAction(c.key, c.val)
@@ -165,11 +171,11 @@ func(s *Server) takeAction(c Command) string {
 	case INCRBY:
 		return s.incrbyAction(c.key, c.val)
 	case MULTI:
-		return s.multiAction()
+		return s.multiAction(ts)
 	case EXEC:
-		return s.execAction()
+		return s.execAction(ts)
 	case DISCARD:
-		return s.discardAction()
+		return s.discardAction(ts)
 	case COMPACT:
 		return s.compactAction()
 	case PING:
@@ -217,60 +223,60 @@ func(s *Server) incrbyAction(key, val string) string {
 	return val
 }
 
-func(s *Server) multiAction() string {
+func(s *Server) multiAction(ts *TranState) string {
 	// if multi tran is already in progress
-	if s.isMulti {
+	if ts.isMulti {
 		return fmt.Errorf("(error) ERR %v", ErrMultiCommandNested).Error()
 	}
 	
-	s.isMulti = true
+	ts.isMulti = true
 	return MssgOK
 }
 
-func(s *Server) execAction() string {
+func(s *Server) execAction(ts *TranState) string {
 	// can't exec without multi
-	if !s.isMulti {
+	if !ts.isMulti {
 		return fmt.Errorf("(error) ERR %v", ErrExecWithoutMulti).Error()
 	}
 
 	// if tran was discarded due to error
-	if s.isTranDiscarded {
-		s.resetTran()
+	if ts.isTranDiscarded {
+		s.resetTran(ts)
 		return fmt.Errorf("(error) ERR %v", ErrTranAbortedDueToPrevError).Error()
 	}
 
 	// if no commands were given in a multi tran
-	if len(s.multiCommandArr) == 0 {
-		s.resetTran()
+	if len(ts.multiCommandArr) == 0 {
+		s.resetTran(ts)
 		return MssgEmptyArray
 	}
 
 	// normal execution
 	var builder strings.Builder
-	lastCmdArrIdx := len(s.multiCommandArr) - 1
-	for i, c := range s.multiCommandArr {
+	lastCmdArrIdx := len(ts.multiCommandArr) - 1
+	for i, c := range ts.multiCommandArr {
 		builder.WriteString(fmt.Sprintf("%d) ", i+1))
 
 		// avoids the extra newline in final output for the last command in tran
 		if lastCmdArrIdx == i {
-			builder.WriteString(s.takeAction(c))
+			builder.WriteString(s.takeAction(c, ts))
 		} else {
-			builder.WriteString(fmt.Sprintln(s.takeAction(c)))
+			builder.WriteString(fmt.Sprintln(s.takeAction(c, ts)))
 		}
 		
 	}
 
-	s.resetTran()
+	s.resetTran(ts)
 	return builder.String()
 }
 
-func(s *Server) discardAction() string {
+func(s *Server) discardAction(ts *TranState) string {
 	// can't discard without multi
-	if !s.isMulti {
+	if !ts.isMulti {
 		return fmt.Errorf("(error) ERR %v", ErrDiscardWithoutMulti).Error()
 	}
 
-	s.resetTran()
+	s.resetTran(ts)
 	return MssgOK
 }
 
@@ -287,22 +293,22 @@ func(s *Server) compactAction() string {
 	return builder.String()
 }
 
-func(s *Server) resetTran() {
-	s.isMulti = false
-	s.isTranDiscarded = false
-	s.multiCommandArr = []Command{}
+func(s *Server) resetTran(ts *TranState) {
+	ts.isMulti = false
+	ts.isTranDiscarded = false
+	ts.multiCommandArr = []Command{}
 }
 
-func StringSplit(input string) ([]string, error) {
+func(s *Server) stringSplit(input string) ([]string, error) {
 	trimmedInput := strings.TrimSpace(input)
-	isValid := isValidCommand(trimmedInput)
+	isValid := s.isValidCommand(trimmedInput)
 	if !isValid {
 		return nil, ErrUnknownCommand
 	}
 
 	var sq rune = '\''
 	var dq rune = '"'
-	var s rune = ' '
+	var sp rune = ' '
 
 	out := []string{}
 	currentString := []rune{}
@@ -312,7 +318,7 @@ func StringSplit(input string) ([]string, error) {
 		if v == sq || v == dq {
 			isInsideQuote = !isInsideQuote
 		}
-		if v == s && !isInsideQuote {
+		if v == sp && !isInsideQuote {
 			out = append(out, string(currentString))
 			currentString = []rune{}
 			continue
@@ -327,80 +333,80 @@ func StringSplit(input string) ([]string, error) {
 	return out, nil
 }
 
-func isValidCommand(command string) bool {
+func(s *Server) isValidCommand(command string) bool {
     var validCommandPattern = `^(?i)(?:"[A-Za-z0-9 ]+"|\b[A-Za-z0-9]+\b)(?:\s+"[^"]*"\s*|\s+\b[A-Za-z0-9]+\b\s*)*$`
     re := regexp.MustCompile(validCommandPattern)
     return re.MatchString(command)
 }
 
-func(s *Server) makeCommand(i []string) (Command, error) {
+func(s *Server) makeCommand(i []string, ts *TranState) (Command, error) {
 	if i[0] == "GET" || i[0] == "get" {
 		if len(i) != 2 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}
 		return Command{name: GET, key: i[1]}, nil
 	} else if i[0] == "SET" || i[0] == "set" {
 		if len(i) != 3 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: SET, key: i[1], val: i[2]}, nil
 	} else if i[0] == "DEL" || i[0] == "del" {
 		if len(i) != 2 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: DEL, key: i[1]}, nil
 	} else if i[0] == "INCR" || i[0] == "incr" {
 		if len(i) != 2 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: INCR, key: i[1]}, nil
 	} else if i[0] == "INCRBY" || i[0] == "incrby" {
 		if len(i) != 3 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: INCRBY, key: i[1], val: i[2]}, nil
 	} else if i[0] == "MULTI" || i[0] == "multi" {
 		if len(i) != 1 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: MULTI}, nil
 	} else if i[0] == "EXEC" || i[0] == "exec" {
 		if len(i) != 1 {
-			s.resetTran()
+			s.resetTran(ts)
 			return Command{}, fmt.Errorf("(error) EXECABORT Transaction discarded because of: %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: EXEC}, nil
 	} else if i[0] == "DISCARD" || i[0] == "discard" {
 		if len(i) != 1 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: DISCARD}, nil
 	} else if i[0] == "COMPACT" || i[0] == "compact" {
 		if len(i) != 1 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}	
 		return Command{name: COMPACT}, nil
 	} else if i[0] == "PING" || i[0] == "ping" {
 		if len(i) != 1 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}
 		return Command{name: PING}, nil
 	} else if i[0] == "DISCONNECT" || i[0] == "disconnect" {
 		if len(i) != 1 {
-			if s.isMulti {s.isTranDiscarded = true}
+			if ts.isMulti {ts.isTranDiscarded = true}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}
 		return Command{name: DISCONNECT}, nil
 	}
-	if s.isMulti {s.isTranDiscarded = true}
+	if ts.isMulti {ts.isTranDiscarded = true}
 	return Command{}, fmt.Errorf("(error) ERR %v '%s', with args beginning with: ", ErrUnknownCommand, i[0])
 }
