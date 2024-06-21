@@ -27,7 +27,7 @@ func main() {
 	}
 
 	s := &server.Server{
-		Db:  db.GetNewDB(inMemoryStore.NewInMemoryStore()),
+		Db:  map[int]db.DbInterface{0:db.GetNewDB(inMemoryStore.NewInMemoryStore())},
 		Listener: ln,
 	}
 

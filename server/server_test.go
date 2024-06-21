@@ -3,10 +3,10 @@ package server
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"net"
 	"strconv"
 	"testing"
-	"fmt"
 
 	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
 	"google.golang.org/grpc/test/bufconn"
@@ -48,7 +48,7 @@ func (m *mockDB) Incr(key string) (string, error) {
 		if err != nil {
 			return "", db.ErrKeyNotInteger
 		}
-		i+=1
+		i += 1
 		m.val = strconv.Itoa(i)
 		return "(integer) " + strconv.Itoa(i), nil
 	} else {
@@ -69,7 +69,7 @@ func (m *mockDB) Incrby(key, num string) (string, error) {
 		if err != nil {
 			return "", db.ErrKeyNotInteger
 		}
-		incrByVal := i+i2
+		incrByVal := i + i2
 		m.val += strconv.Itoa(incrByVal)
 		return "(integer) " + strconv.Itoa(incrByVal), nil
 	} else {
@@ -89,10 +89,9 @@ func (m *mockDB) GetAll() map[string]string {
 	}
 }
 
-
-func GetTestServer(db *mockDB, ln net.Listener) *Server {
+func GetTestServer(md *mockDB, ln net.Listener) *Server {
 	return &Server{
-		Db: db,
+		Db:       map[int]db.DbInterface{0: md},
 		Listener: ln,
 	}
 }
@@ -105,7 +104,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if md.key != "foo" {
 			t.Errorf("Expected the key to be %q but didn't found it", md.key)
@@ -123,7 +122,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -137,7 +136,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -151,7 +150,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -165,8 +164,8 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md, nil)
-		s.handleCommand("DEL foo", &buf, &TranState{})
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand("DEL foo", &buf, &ConnContext{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -180,7 +179,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -194,7 +193,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -208,7 +207,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if md.key != "" {
 			t.Errorf("Expected the key to be deleted but found %q", md.key)
@@ -226,7 +225,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -240,7 +239,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "4"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -254,7 +253,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -268,7 +267,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -282,7 +281,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "10.5"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -296,7 +295,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "4"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -310,7 +309,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -324,7 +323,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -338,7 +337,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "4"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -352,7 +351,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -366,7 +365,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "foo", val: "10.5"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -380,7 +379,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -394,14 +393,13 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
 		}
 	})
 
-	
 	t.Run("COMPACT command with one key-val pair", func(t *testing.T) {
 		input := "COMPACT"
 		expOut := "SET foo bar\n"
@@ -409,7 +407,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "one"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -424,7 +422,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{key: "multiple"}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut1)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut1, buf.String())
@@ -441,13 +439,12 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
 		}
 	})
-
 
 	t.Run("Invalid command", func(t *testing.T) {
 		input := "gibberish foo bar"
@@ -456,7 +453,7 @@ func TestCommandParser(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &TranState{})
+		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
@@ -471,12 +468,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -491,12 +487,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -511,12 +506,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -531,12 +525,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -551,12 +544,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -571,12 +563,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -591,12 +582,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -611,12 +601,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -631,12 +620,11 @@ func TestCommandParserWithMulti(t *testing.T) {
 		var buf bytes.Buffer
 		md := &mockDB{}
 		s := GetTestServer(md, nil)
-		ts := &TranState{}
+		ts := &ConnContext{}
 
 		for i, input := range inputArr {
 			s.handleCommand(input, &buf, ts)
 
-			
 			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
 				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
 			}
@@ -646,7 +634,7 @@ func TestCommandParserWithMulti(t *testing.T) {
 	})
 }
 
-func TestServerConn(t *testing.T){
+func TestServerConn(t *testing.T) {
 	t.Run("Check if server is accepting connections ", func(t *testing.T) {
 		// creates a test listener
 		ln := bufconn.Listen(1024 * 1024)
@@ -665,62 +653,60 @@ func TestServerConn(t *testing.T){
 	})
 
 	t.Run("Ping the server", func(t *testing.T) {
-        buf := make([]byte, 1024)
-        input := PING
-        expOut := PONG
+		buf := make([]byte, 1024)
+		input := PING
+		expOut := PONG
 
-
-        // Assuming Server has a method Start that takes a net.Listener
-        md := &mockDB{}
+		// Assuming Server has a method Start that takes a net.Listener
+		md := &mockDB{}
 		ln := bufconn.Listen(1024 * 1024)
-        s := &Server{Listener: ln, Db: md}
-        go s.Start()
-    
-        // starting connection
-        conn, err := ln.Dial()
-        if err != nil {
-            t.Fatalf("Failed to dial: %v", err)
-        }
-        defer conn.Close()
+		s := GetTestServer(md, ln)
+		go s.Start()
 
-        // Simulate client sending a command
-        fmt.Fprintln(conn, input)
+		// starting connection
+		conn, err := ln.Dial()
+		if err != nil {
+			t.Fatalf("Failed to dial: %v", err)
+		}
+		defer conn.Close()
 
-        // reading from connection
-        n, err := conn.Read(buf)
-        if err != nil {
-            t.Fatalf("Error while reading from connection: %v", err)
-        }
+		// Simulate client sending a command
+		fmt.Fprintln(conn, input)
 
-        if !bytes.Contains(buf[:n], []byte(expOut)) {
+		// reading from connection
+		n, err := conn.Read(buf)
+		if err != nil {
+			t.Fatalf("Error while reading from connection: %v", err)
+		}
+
+		if !bytes.Contains(buf[:n], []byte(expOut)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut, string(buf[:n]))
 		}
-    })
+	})
 
 	// writing test for disconnection of server pending
 	// t.Run("disconnect the server", func(t *testing.T) {
-    //     buf := make([]byte, 1024)
-    //     input := DISCONNECT
-    //     // expOut := PONG
+	//     buf := make([]byte, 1024)
+	//     input := DISCONNECT
+	//     // expOut := PONG
 
-
-    //     // Assuming Server has a method Start that takes a net.Listener
-    //     md := &mockDB{}
+	//     // Assuming Server has a method Start that takes a net.Listener
+	//     md := &mockDB{}
 	// 	ln := bufconn.Listen(1024 * 1024)
-    //     s := &Server{Listener: ln, Db: md}
-    //     go s.Start()
-    
-    //     // starting connection
-    //     conn, err := ln.Dial()
-    //     if err != nil {
-    //         t.Fatalf("Failed to dial: %v", err)
-    //     }
-    //     defer conn.Close()
+	//     s := &Server{Listener: ln, Db: md}
+	//     go s.Start()
 
-    //     // Simulate client sending a command
-    //     fmt.Fprintln(conn, input)
+	//     // starting connection
+	//     conn, err := ln.Dial()
+	//     if err != nil {
+	//         t.Fatalf("Failed to dial: %v", err)
+	//     }
+	//     defer conn.Close()
 
-    //     // trying to connect on same connection after connection
+	//     // Simulate client sending a command
+	//     fmt.Fprintln(conn, input)
+
+	//     // trying to connect on same connection after connection
 	// 	fmt.Fprintln(conn, PING)
 	// 	n, err := conn.Read(buf)
 	// 	// if err == nil {
@@ -728,12 +714,11 @@ func TestServerConn(t *testing.T){
 	// 	// }
 
 	// 	fmt.Println(string(buf[:n]))
-        
 
-    //     // if !bytes.Contains(buf[:n], []byte(expOut)) {
+	//     // if !bytes.Contains(buf[:n], []byte(expOut)) {
 	// 	// 	t.Errorf("Expected output to contain %q but got %s instead", expOut, string(buf[:n]))
 	// 	// }
-    // })
+	// })
 }
 
 func TestConcurrentConn(t *testing.T) {
@@ -761,114 +746,189 @@ func TestConcurrentConn(t *testing.T) {
 	})
 
 	t.Run("Check if multiple connections share the same storage", func(t *testing.T) {
-        buf := make([]byte, 1024)
-        input1 := "SET name John"
+		buf := make([]byte, 1024)
+		input1 := "SET name John"
 		expOut1 := MssgOK + "\n"
-        input2 := "GET name"
+		input2 := "GET name"
 		expOut2 := strconv.Quote("John") + "\n"
 
-
-        // starting the server
-        md := &mockDB{}
+		// starting the server
+		md := &mockDB{}
 		ln := bufconn.Listen(1024 * 1024)
-        s := &Server{Listener: ln, Db: md}
-        go s.Start()
-    
-        // starting 1st connection
-        conn1, err := ln.Dial()
-        if err != nil {
-            t.Fatalf("Failed to dial: %v", err)
-        }
-        defer conn1.Close()
+		s := GetTestServer(md, ln)
+		go s.Start()
 
-        // sending 1st command
-        fmt.Fprintln(conn1, input1)
+		// starting 1st connection
+		conn1, err := ln.Dial()
+		if err != nil {
+			t.Fatalf("Failed to dial: %v", err)
+		}
+		defer conn1.Close()
 
-        // reading & verifying from connection1
-        n, err := conn1.Read(buf)
-        if err != nil {
-            t.Fatalf("Error while reading from connection: %v", err)
-        }
+		// sending 1st command
+		fmt.Fprintln(conn1, input1)
 
-        if !bytes.Contains(buf[:n], []byte(expOut1)) {
+		// reading & verifying from connection1
+		n, err := conn1.Read(buf)
+		if err != nil {
+			t.Fatalf("Error while reading from connection: %v", err)
+		}
+
+		if !bytes.Contains(buf[:n], []byte(expOut1)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut1, string(buf[:n]))
 		}
 
-        // starting 2nd connection
-        conn2, err := ln.Dial()
-        if err != nil {
-            t.Fatalf("Failed to dial: %v", err)
-        }
-        defer conn2.Close()
+		// starting 2nd connection
+		conn2, err := ln.Dial()
+		if err != nil {
+			t.Fatalf("Failed to dial: %v", err)
+		}
+		defer conn2.Close()
 
-        // sending 1st command
-        fmt.Fprintln(conn2, input2)
+		// sending 1st command
+		fmt.Fprintln(conn2, input2)
 
-        // reading & verifying from connection2
-        n, err = conn2.Read(buf)
-        if err != nil {
-            t.Fatalf("Error while reading from connection: %v", err)
-        }
+		// reading & verifying from connection2
+		n, err = conn2.Read(buf)
+		if err != nil {
+			t.Fatalf("Error while reading from connection: %v", err)
+		}
 
-        if !bytes.Contains(buf[:n], []byte(expOut2)) {
+		if !bytes.Contains(buf[:n], []byte(expOut2)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut2, string(buf[:n]))
 		}
-    })
+	})
 
 	t.Run("Check if multiple connections multi tran operations run independently", func(t *testing.T) {
-        buf := make([]byte, 1024)
-        input1 := []string{"MULTI", "SET name John"}
-		expOut1 := []string{MssgOK, QUEUED}
-        input2 := "INCR age"
-		expOut2 := "(integer) 1"
-		
+		buf := make([]byte, 1024)
+		testCases := []struct {
+			input  []string
+			expOut []string
+		}{
+			{[]string{"MULTI", "SET name John"}, []string{MssgOK, "QUEUED"}},
+			{[]string{"INCR age"}, []string{"(integer) 1"}},
+		}
 
-
-        // starting the server
-        md := &mockDB{}
+		// starting the server
+		md := &mockDB{}
 		ln := bufconn.Listen(1024 * 1024)
-        s := &Server{Listener: ln, Db: md}
-        go s.Start()
-    
-        // starting 1st connection
-        conn1, err := ln.Dial()
-        if err != nil {
-            t.Fatalf("Failed to dial: %v", err)
-        }
-        defer conn1.Close()
+		s := GetTestServer(md, ln)
+		go s.Start()
 
-		// writing and verifying from 1st connection
-		for i, input := range input1 {
-			fmt.Fprintln(conn1, input)
-			
-			n, err := conn1.Read(buf)
+		for _, tc := range testCases {
+			// starting connection
+			conn, err := ln.Dial()
 			if err != nil {
-				t.Fatalf("Error while reading from connection: %v", err)
+				t.Fatalf("Failed to dial: %v", err)
 			}
-	
-			if !bytes.Contains(buf[:n], []byte(expOut1[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut1[i], string(buf[:n]))
+			defer conn.Close()
+
+			// writing and verifying from connection
+			for i, input := range tc.input {
+				// writing to connection
+				fmt.Fprintln(conn, input)
+
+				// reading from connection
+				n, err := conn.Read(buf)
+				if err != nil {
+					t.Fatalf("Error while reading from connection: %v", err)
+				}
+
+				// verifying from connection
+				if !bytes.Contains(buf[:n], []byte(tc.expOut[i])) {
+					t.Errorf("Expected output to contain %q but got %s instead", tc.expOut[i], string(buf[:n]))
+				}
 			}
 		}
-    
-        // starting 2nd connection
-        conn2, err := ln.Dial()
-        if err != nil {
-            t.Fatalf("Failed to dial: %v", err)
-        }
-        defer conn2.Close()
 
-        // sending 1st command
-        fmt.Fprintln(conn2, input2)
+	})
+}
 
-        // reading & verifying from connection2
-        n, err := conn2.Read(buf)
-        if err != nil {
-            t.Fatalf("Error while reading from connection: %v", err)
-        }
+func TestSelectCommand(t *testing.T) {
+	t.Run("SELECT command with invalid number of arguments (2)", func(t *testing.T) {
+		var buf bytes.Buffer
+		input := "SELECT 1 4"
+		expOut := ErrWrongNumberOfArgs.Error()
 
-        if !bytes.Contains(buf[:n], []byte(expOut2)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut2, string(buf[:n]))
+		md := &mockDB{}
+		s := GetTestServer(md, nil)
+		s.handleCommand(input, &buf, &ConnContext{})
+
+		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
 		}
-    })
+	})
+	t.Run("SELECT command with invalid type of argument (string)", func(t *testing.T) {
+		var buf bytes.Buffer
+		input := "SELECT foo"
+		expOut := db.ErrKeyNotInteger.Error()
+
+		md := &mockDB{}
+		s := GetTestServer(md, nil)
+		s.handleCommand(input, &buf, &ConnContext{})
+
+		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
+		}
+	})
+	t.Run("SELECT command with invalid range of argument (not in 0-15)", func(t *testing.T) {
+		var buf bytes.Buffer
+		input := "SELECT 24"
+		expOut := ErrDBIndexOutOfRange.Error()
+
+		md := &mockDB{}
+		s := GetTestServer(md, nil)
+		s.handleCommand(input, &buf, &ConnContext{})
+
+		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
+			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
+		}
+	})
+
+	t.Run("Check if multiple db indexes are running independently", func(t *testing.T) {
+		buf := make([]byte, 1024)
+		testCases := []struct {
+			input  []string
+			expOut []string
+		}{
+			{[]string{"SELECT 1", "SET name John"}, []string{MssgOK, MssgOK}},
+			{[]string{"SELECT 2", "SET name Mills"}, []string{MssgOK, MssgOK}},
+			{[]string{"SELECT 1", "GET name"}, []string{MssgOK, "John"}},
+			{[]string{"SELECT 2", "GET name"}, []string{MssgOK, "Mills"}},
+		}
+
+		// starting the server
+		md := &mockDB{}
+		ln := bufconn.Listen(1024 * 1024)
+		s := GetTestServer(md, ln)
+		// s := &Server{Listener: ln, Db: md}
+		go s.Start()
+
+		for _, tc := range testCases {
+			// starting connection
+			conn, err := ln.Dial()
+			if err != nil {
+				t.Fatalf("Failed to dial: %v", err)
+			}
+			defer conn.Close()
+
+			// writing and verifying from connection
+			for i, input := range tc.input {
+				// writing to connection
+				fmt.Fprintln(conn, input)
+
+				// reading from connection
+				n, err := conn.Read(buf)
+				if err != nil {
+					t.Fatalf("Error while reading from connection: %v", err)
+				}
+
+				// verifying from connection
+				if !bytes.Contains(buf[:n], []byte(tc.expOut[i])) {
+					t.Errorf("Expected output to contain %q but got %s instead", tc.expOut[i], string(buf[:n]))
+				}
+			}
+		}
+
+	})
 }
