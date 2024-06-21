@@ -164,6 +164,10 @@ func (s *Server) handleCommand(input string, out io.Writer, cc *ConnContext) {
 
 func (s *Server) takeAction(c Command, cc *ConnContext) string {
 	switch c.name {
+	case PING:
+		return s.pingAction()
+	case SELECT:
+		return s.selectAction(cc, c.val)
 	case SET:
 		return s.setAction(cc, c.key, c.val)
 	case GET:
@@ -182,10 +186,6 @@ func (s *Server) takeAction(c Command, cc *ConnContext) string {
 		return s.discardAction(cc)
 	case COMPACT:
 		return s.compactAction(cc)
-	case PING:
-		return s.pingAction()
-	case SELECT:
-		return s.selectAction(cc, c.val)
 	default:
 		return fmt.Errorf("(error) ERR %v", ErrUnknownCommand).Error()
 	}
@@ -207,7 +207,7 @@ func (s *Server) selectAction(cc *ConnContext, val string) string {
 	}
 
 	// checking for the particular db index
-	// create one if its not there and set the index
+	// create db if its not there and set the index
 	_, ok := s.Db[i]
 	if !ok {
 		s.Db[i] = db.GetNewDB(inMemoryStore.NewInMemoryStore())
@@ -308,6 +308,12 @@ func (s *Server) discardAction(cc *ConnContext) string {
 	return MssgOK
 }
 
+func (s *Server) resetTran(cc *ConnContext) {
+	cc.isMulti = false
+	cc.isTranDiscarded = false
+	cc.multiCommandArr = []Command{}
+}
+
 func (s *Server) compactAction(cc *ConnContext) string {
 	data := s.Db[cc.dbIdx].GetAll()
 	if len(data) == 0 {
@@ -319,12 +325,6 @@ func (s *Server) compactAction(cc *ConnContext) string {
 		builder.WriteString(fmt.Sprintf("%s %s %s\n", SET, k, v))
 	}
 	return builder.String()
-}
-
-func (s *Server) resetTran(cc *ConnContext) {
-	cc.isMulti = false
-	cc.isTranDiscarded = false
-	cc.multiCommandArr = []Command{}
 }
 
 func (s *Server) stringSplit(input string) ([]string, error) {
@@ -368,93 +368,8 @@ func (s *Server) isValidCommand(command string) bool {
 }
 
 func (s *Server) makeCommand(i []string, cc *ConnContext) (Command, error) {
-	if i[0] == "GET" || i[0] == "get" {
-		if len(i) != 2 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: GET, key: i[1]}, nil
-	} else if i[0] == "SET" || i[0] == "set" {
-		if len(i) != 3 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: SET, key: i[1], val: i[2]}, nil
-	} else if i[0] == "DEL" || i[0] == "del" {
-		if len(i) != 2 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: DEL, key: i[1]}, nil
-	} else if i[0] == "INCR" || i[0] == "incr" {
-		if len(i) != 2 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: INCR, key: i[1]}, nil
-	} else if i[0] == "INCRBY" || i[0] == "incrby" {
-		if len(i) != 3 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: INCRBY, key: i[1], val: i[2]}, nil
-	} else if i[0] == "MULTI" || i[0] == "multi" {
-		if len(i) != 1 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: MULTI}, nil
-	} else if i[0] == "EXEC" || i[0] == "exec" {
-		if len(i) != 1 {
-			s.resetTran(cc)
-			return Command{}, fmt.Errorf("(error) EXECABORT Transaction discarded because of: %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: EXEC}, nil
-	} else if i[0] == "DISCARD" || i[0] == "discard" {
-		if len(i) != 1 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: DISCARD}, nil
-	} else if i[0] == "COMPACT" || i[0] == "compact" {
-		if len(i) != 1 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: COMPACT}, nil
-	} else if i[0] == "PING" || i[0] == "ping" {
-		if len(i) != 1 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: PING}, nil
-	} else if i[0] == "DISCONNECT" || i[0] == "disconnect" {
-		if len(i) != 1 {
-			if cc.isMulti {
-				cc.isTranDiscarded = true
-			}
-			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
-		}
-		return Command{name: DISCONNECT}, nil
-	} else if i[0] == "SELECT" || i[0] == "select" {
+	switch {
+	case i[0] == "SELECT" || i[0] == "select":
 		if len(i) != 2 {
 			if cc.isMulti {
 				cc.isTranDiscarded = true
@@ -462,9 +377,96 @@ func (s *Server) makeCommand(i []string, cc *ConnContext) (Command, error) {
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}
 		return Command{name: SELECT, val: i[1]}, nil
-	}
-	if cc.isMulti {
-		cc.isTranDiscarded = true
-	}
-	return Command{}, fmt.Errorf("(error) ERR %v '%s', with args beginning with: ", ErrUnknownCommand, i[0])
+	case i[0] == "PING" || i[0] == "ping":
+		if len(i) != 1 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: PING}, nil
+	case i[0] == "GET" || i[0] == "get":
+		if len(i) != 2 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: GET, key: i[1]}, nil
+	case i[0] == "SET" || i[0] == "set":
+		if len(i) != 3 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: SET, key: i[1], val: i[2]}, nil
+	case i[0] == "DEL" || i[0] == "del":
+		if len(i) != 2 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: DEL, key: i[1]}, nil
+	case i[0] == "INCR" || i[0] == "incr":
+		if len(i) != 2 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: INCR, key: i[1]}, nil
+	case i[0] == "INCRBY" || i[0] == "incrby":
+		if len(i) != 3 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: INCRBY, key: i[1], val: i[2]}, nil
+	case i[0] == "MULTI" || i[0] == "multi":
+		if len(i) != 1 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: MULTI}, nil
+	case i[0] == "EXEC" || i[0] == "exec":
+		if len(i) != 1 {
+			s.resetTran(cc)
+			return Command{}, fmt.Errorf("(error) EXECABORT Transaction discarded because of: %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: EXEC}, nil
+	case i[0] == "DISCARD" || i[0] == "discard":
+		if len(i) != 1 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: DISCARD}, nil
+	case i[0] == "COMPACT" || i[0] == "compact":
+		if len(i) != 1 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: COMPACT}, nil
+	case i[0] == "DISCONNECT" || i[0] == "disconnect":
+		if len(i) != 1 {
+			if cc.isMulti {
+				cc.isTranDiscarded = true
+			}
+			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
+		}
+		return Command{name: DISCONNECT}, nil
+	default:
+		if cc.isMulti {
+			cc.isTranDiscarded = true
+		}
+		return Command{}, fmt.Errorf("(error) ERR %v '%s', with args beginning with: ", ErrUnknownCommand, i[0])
+	}	
 }
