@@ -9,122 +9,43 @@ import (
 func TestStringSplit(t *testing.T) {
 	md := &mockDB{}
 	s := GetTestServer(md, nil)
-	
-	t.Run("command without quotes", func(t *testing.T) {
-		input := "SET foo bar"
-		expOut := []string{"SET", "foo", "bar"}
 
-		out, err := s.stringSplit(input)
-		if err != nil {
-			t.Fatalf("Unexpected error occured : %v", err)
-		}
+	testCases := []struct{
+		name string
+		input string
+		expOut []string
+		isError bool
+		err error
+	}{
+		{"command without quotes", "SET foo bar", []string{"SET", "foo", "bar"}, false, nil},
+		{"command with value in quotes", "SET foo \"bar in quotes\"", []string{"SET", "foo", "bar in quotes"}, false, nil},
+		{"command with key in quotes", "SET \"foo in quotes\" bar", []string{"SET", "foo in quotes", "bar"}, false, nil},
+		{"command with both key and value in quotes", "SET \"foo in quotes\" \"bar in quotes\"", []string{"SET", "foo in quotes", "bar in quotes"}, false, nil},
+		{"command with everything in quotes", "\"SET\" \"foo in quotes\" \"bar in quotes\"", []string{"SET", "foo in quotes", "bar in quotes"}, false, nil},
+		{"invalid command with quotes in between", "SET foo bar\"in\"quotes", nil, true, ErrUnknownCommand},
+		{"invalid command with unbalanced quotes", "SET \"foo in quotes \"bar in quotes\"", nil, true, ErrUnknownCommand},
+		{"invalid command with starting in quotes", "\"SET \"foo in quotes \"bar in quotes\"", nil, true, ErrUnknownCommand},
+	}
 
-		if !slices.Equal(expOut, out) {
-			t.Errorf("Expected %q but got %q", expOut, out)
-		}
-	})
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := s.stringSplit(tc.input)
 
-	t.Run("command with value in quotes", func(t *testing.T) {
-		input := `SET foo "bar in quotes"`
-		expOut := []string{"SET", "foo", "bar in quotes"}
+			if tc.isError {
+				if err == nil {
+					t.Fatal("Expected error but got none")
+				}
 
-		out, err := s.stringSplit(input)
-		if err != nil {
-			t.Fatalf("Unexpected error occured : %v", err)
-		}
+				if errors.Is(err, tc.err) {
+					return
+				}
 
-		if !slices.Equal(expOut, out) {
-			t.Errorf("Expected %q but got %q", expOut, out)
-		}
-	})
+				t.Fatalf("Unexpected error occured : %v", err)
+			}
 
-	t.Run("command with key in quotes", func(t *testing.T) {
-		input := `SET "foo in quotes" bar`
-		expOut := []string{"SET", "foo in quotes", "bar"}
-
-		out, err := s.stringSplit(input)
-		if err != nil {
-			t.Fatalf("Unexpected error occured : %v", err)
-		}
-
-		if !slices.Equal(expOut, out) {
-			t.Errorf("Expected %q but got %q", expOut, out)
-		}
-	})
-
-	t.Run("command with both key and value in quotes", func(t *testing.T) {
-		input := `SET "foo in quotes" "bar in quotes"`
-		expOut := []string{"SET", "foo in quotes", "bar in quotes"}
-
-		out, err := s.stringSplit(input)
-		if err != nil {
-			t.Fatalf("Unexpected error occured : %v", err)
-		}
-
-		if !slices.Equal(expOut, out) {
-			t.Errorf("Expected %q but got %q", expOut, out)
-		}
-	})
-
-	t.Run("command with everything in quotes", func(t *testing.T) {
-		input := `"SET" "foo in quotes" "bar in quotes"`
-		expOut := []string{"SET", "foo in quotes", "bar in quotes"}
-
-		out, err := s.stringSplit(input)
-		if err != nil {
-			t.Fatalf("Unexpected error occured : %v", err)
-		}
-
-		if !slices.Equal(expOut, out) {
-			t.Errorf("Expected %q but got %q", expOut, out)
-		}
-	})
-
-	t.Run("invalid command with quotes in between", func(t *testing.T) {
-		input := `SET foo bar"in"quotes"`
-		expOut := ErrUnknownCommand
-
-		_, err := s.stringSplit(input)
-		if err == nil {
-			t.Fatal("Expected error but got none")
-		}
-
-		if errors.Is(err, expOut) {
-			return
-		}
-
-		t.Fatalf("Unexpected error occured : %v", err)
-	})
-
-	t.Run("invalid command with unbalanced quotes", func(t *testing.T) {
-		input := `SET "foo in quotes "bar in quotes"`
-		expOut := ErrUnknownCommand
-
-		_, err := s.stringSplit(input)
-		if err == nil {
-			t.Fatal("Expected error but got none")
-		}
-
-		if errors.Is(err, expOut) {
-			return
-		}
-
-		t.Fatalf("Unexpected error occured : %v", err)
-	})
-
-	t.Run("invalid command with starting in quotes", func(t *testing.T) {
-		input := `"SET "foo in quotes "bar in quotes"`
-		expOut := ErrUnknownCommand
-
-		_, err := s.stringSplit(input)
-		if err == nil {
-			t.Fatal("Expected error but got none")
-		}
-
-		if errors.Is(err, expOut) {
-			return
-		}
-
-		t.Fatalf("Unexpected error occured : %v", err)
-	})
+			if !slices.Equal(tc.expOut, out) {
+				t.Errorf("Expected %q but got %q", tc.expOut, out)
+			}
+		})
+	}
 }

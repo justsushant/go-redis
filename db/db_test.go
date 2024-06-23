@@ -200,7 +200,7 @@ func TestIncrCommand(t *testing.T) {
 
 	t.Run("when val doesn't exist", func(t *testing.T) {
 		key := "foo"
-		expOut := SetSuccessMessage
+		expOut := "(integer) 1"
 		
 		mockStore := &mockStore{}
 		newDB := &Db{store: mockStore}
