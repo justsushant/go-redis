@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/store/inMemoryStore"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/db"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inMemoryStore"
 )
 
 var (
@@ -21,7 +21,7 @@ var (
 	ErrTranAbortedDueToPrevError = errors.New("transaction discarded because of previous errors")
 	ErrMultiCommandNested        = errors.New("multi calls can not be nested")
 	ErrDBIndexOutOfRange         = errors.New("(error) ERR DB index is out of range")
-	ErrKeyNotFound = errors.New("failed to find the key")
+	ErrKeyNotFound               = errors.New("failed to find the key")
 	MssgEmptyArray               = "(empty array)"
 	MssgOK                       = "OK"
 	MssgNil                      = "(nil)"
@@ -57,10 +57,10 @@ func (c *Command) String() string {
 }
 
 type ConnContext struct {
-	isMulti         bool	// to check if multi tran in progress
-	multiCommandArr []Command	// to store commands of multi tran
-	isTranDiscarded bool	// to check if multi tran was discarded
-	dbIdx           int		// to store the db index
+	isMulti         bool      // to check if multi tran in progress
+	multiCommandArr []Command // to store commands of multi tran
+	isTranDiscarded bool      // to check if multi tran was discarded
+	dbIdx           int       // to store the db index
 }
 
 type Server struct {
@@ -427,7 +427,7 @@ func (s *Server) makeCommand(i []string, cc *ConnContext) (Command, error) {
 	case i[0] == "INCR" || i[0] == "incr":
 		if len(i) != 2 {
 			if cc.isMulti {
-				cc.isTranDiscarded = true
+				cc.isTranDiscarded = 	true
 			}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}
@@ -483,5 +483,5 @@ func (s *Server) makeCommand(i []string, cc *ConnContext) (Command, error) {
 			cc.isTranDiscarded = true
 		}
 		return Command{}, fmt.Errorf("(error) ERR %v '%s', with args beginning with: ", ErrUnknownCommand, i[0])
-	}	
+	}
 }

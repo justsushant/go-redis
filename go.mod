@@ -1,4 +1,4 @@
-module github.com/justsushant/one2n-go-bootcamp/redis-go
+module github.com/justsushant/one2n-go-bootcamp/go-redis
 
 go 1.22.1
 

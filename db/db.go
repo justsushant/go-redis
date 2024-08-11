@@ -4,11 +4,12 @@ import (
 	"errors"
 	"strconv"
 
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/store"
-	// "github.com/justsushant/one2n-go-bootcamp/redis-go/store/inMemoryStore"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/store"
+	// "github.com/justsushant/one2n-go-bootcamp/go-redis/store/inMemoryStore"
 )
 
 var ErrKeyNotFound = errors.New("(nil)")
+
 // var ErrKeyNotFound = errors.New("failed to find the key")
 var ErrKeyNotInteger = errors.New("value is not an integer or out of range")
 var SetSuccessMessage = "OK"
@@ -31,16 +32,16 @@ type Db struct {
 }
 
 func GetNewDB(store store.Store) Db {
-	return Db {
+	return Db{
 		store: store,
 	}
 }
 
-func(d Db) Set(key, val string) {
+func (d Db) Set(key, val string) {
 	d.store.Set(key, val)
 }
 
-func(d Db) Get(key string) (string, error) {
+func (d Db) Get(key string) (string, error) {
 	val, ok := d.store.Get(key)
 	if !ok {
 		return "", ErrKeyNotFound
@@ -49,7 +50,7 @@ func(d Db) Get(key string) (string, error) {
 	return val, nil
 }
 
-func(d Db) Del(key string) string {
+func (d Db) Del(key string) string {
 	_, ok := d.store.Get(key)
 	if !ok {
 		return DeleteFailedMessage
@@ -59,7 +60,7 @@ func(d Db) Del(key string) string {
 	return DeleteSuccessMessage
 }
 
-func(d Db) Incr(key string) (string, error) {
+func (d Db) Incr(key string) (string, error) {
 	val, ok := d.store.Get(key)
 	if !ok {
 		d.store.Set(key, DefaultIntegerValue)
@@ -71,12 +72,12 @@ func(d Db) Incr(key string) (string, error) {
 		return "", ErrKeyNotInteger
 	}
 
-	incrVal := i+1
+	incrVal := i + 1
 	d.store.Set(key, strconv.Itoa(incrVal))
 	return Integer + " " + strconv.Itoa(incrVal), nil
 }
 
-func(d Db) Incrby(key, i string) (string, error) {
+func (d Db) Incrby(key, i string) (string, error) {
 	num, err := strconv.Atoi(i)
 	if err != nil {
 		return "", ErrKeyNotInteger
@@ -92,12 +93,12 @@ func(d Db) Incrby(key, i string) (string, error) {
 	if err != nil {
 		return "", ErrKeyNotInteger
 	}
-	
-	incrVal := num+vali
+
+	incrVal := num + vali
 	d.store.Set(key, strconv.Itoa(incrVal))
 	return Integer + " " + strconv.Itoa(incrVal), nil
 }
 
-func(d Db) GetAll() map[string]string {
+func (d Db) GetAll() map[string]string {
 	return d.store.GetAll()
 }

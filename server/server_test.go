@@ -5,11 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"strconv"
 	"slices"
+	"strconv"
 	"testing"
 
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/db"
 	"google.golang.org/grpc/test/bufconn"
 )
 
@@ -96,11 +96,11 @@ func GetTestServer(md *mockDB, ln net.Listener) *Server {
 }
 
 func TestCommandParser(t *testing.T) {
-	testCases := []struct{
-		name string
-		key string
-		val string
-		input string
+	testCases := []struct {
+		name   string
+		key    string
+		val    string
+		input  string
 		expOut string
 	}{
 		{"SET command", "", "", "SET foo bar", MssgOK},
@@ -583,12 +583,12 @@ func TestStringSplit(t *testing.T) {
 	md := &mockDB{}
 	s := GetTestServer(md, nil)
 
-	testCases := []struct{
-		name string
-		input string
-		expOut []string
+	testCases := []struct {
+		name    string
+		input   string
+		expOut  []string
 		isError bool
-		err error
+		err     error
 	}{
 		{"command without quotes", "SET foo bar", []string{"SET", "foo", "bar"}, false, nil},
 		{"command with value in quotes", "SET foo \"bar in quotes\"", []string{"SET", "foo", "bar in quotes"}, false, nil},

@@ -1,21 +1,22 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"os"
-	"fmt"
+
 	"github.com/joho/godotenv"
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/server"
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
-	"github.com/justsushant/one2n-go-bootcamp/redis-go/store/inMemoryStore"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/db"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/server"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inMemoryStore"
 )
 
 func main() {
 	// load env file
 	err := godotenv.Load()
-    if err != nil {
-        fmt.Println("Error loading .env file")
-    }
+	if err != nil {
+		fmt.Println("Error loading .env file")
+	}
 
 	// set the port
 	port, ok := os.LookupEnv("PORT")
@@ -31,11 +32,11 @@ func main() {
 
 	// create a new server
 	s := &server.Server{
-		Db:  map[int]db.DbInterface{0:db.GetNewDB(inMemoryStore.NewInMemoryStore())},
+		Db:       map[int]db.DbInterface{0: db.GetNewDB(inMemoryStore.NewInMemoryStore())},
 		Listener: ln,
 	}
 
 	// start the server
-	s.Start();
+	s.Start()
 
 }
