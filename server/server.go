@@ -21,6 +21,7 @@ var (
 	ErrTranAbortedDueToPrevError = errors.New("transaction discarded because of previous errors")
 	ErrMultiCommandNested        = errors.New("multi calls can not be nested")
 	ErrDBIndexOutOfRange         = errors.New("(error) ERR DB index is out of range")
+	ErrKeyNotFound = errors.New("failed to find the key")
 	MssgEmptyArray               = "(empty array)"
 	MssgOK                       = "OK"
 	MssgNil                      = "(nil)"
@@ -56,10 +57,10 @@ func (c *Command) String() string {
 }
 
 type ConnContext struct {
-	isMulti         bool
-	multiCommandArr []Command
-	isTranDiscarded bool
-	dbIdx           int
+	isMulti         bool	// to check if multi tran in progress
+	multiCommandArr []Command	// to store commands of multi tran
+	isTranDiscarded bool	// to check if multi tran was discarded
+	dbIdx           int		// to store the db index
 }
 
 type Server struct {
@@ -83,7 +84,7 @@ func (s *Server) Start() {
 
 // start method for cli application
 // func (s *Server) Start() {
-//     // Infinite loop to accept commands until an exit command is issued
+//     // infinite loop to accept commands until an exit command is issued
 //     for {
 //         fmt.Fprint(s.Out, "> ")
 //         reader := bufio.NewReader(os.Stdin)
@@ -93,16 +94,16 @@ func (s *Server) Start() {
 //             continue
 //         }
 
-//         // Trim the newline character from the input
+//         // trim the newline character from the input
 //         input = strings.TrimSpace(input)
 
-//         // Check for exit command to break the loop
+//         // check for exit command to break the loop
 //         if strings.ToLower(input) == "exit" {
 //             fmt.Fprintln(s.Out, "Exiting...")
 //             break
 //         }
 
-//         // Pass the command to the handleCommand method
+//         // pass the command to the handleCommand method
 //         s.handleCommand(input)
 //     }
 // }
@@ -135,7 +136,7 @@ func (s *Server) handleCommand(input string, out io.Writer, cc *ConnContext) {
 		return
 	}
 
-	// convert into command type
+	// convert raw command into command type
 	c, err := s.makeCommand(i, cc)
 	if err != nil {
 		fmt.Fprintln(out, err)
@@ -162,6 +163,7 @@ func (s *Server) handleCommand(input string, out io.Writer, cc *ConnContext) {
 	fmt.Fprintln(out, resp)
 }
 
+// takes action based on the command name
 func (s *Server) takeAction(c Command, cc *ConnContext) string {
 	switch c.name {
 	case PING:
@@ -334,39 +336,52 @@ func (s *Server) stringSplit(input string) ([]string, error) {
 		return nil, ErrUnknownCommand
 	}
 
-	var sq rune = '\''
-	var dq rune = '"'
-	var sp rune = ' '
+	// declaration of single quote, double quote and space character vars
+	var (
+		sq rune = '\''
+		dq rune = '"'
+		sp rune = ' '
+	)
 
 	out := []string{}
 	currentString := []rune{}
 	isInsideQuote := false
 
 	for _, v := range trimmedInput {
+		// if char is quote, flip the isInsideQuote flag
 		if v == sq || v == dq {
 			isInsideQuote = !isInsideQuote
 		}
+
+		// if char is space and not inside quote, append the string to out
 		if v == sp && !isInsideQuote {
 			out = append(out, string(currentString))
 			currentString = []rune{}
 			continue
 		}
+
+		// if char isn't quote, append the char to currentString
 		if v != sq && v != dq {
 			currentString = append(currentString, v)
 		}
 	}
+	// append the last string to out
 	if len(currentString) > 0 {
 		out = append(out, string(currentString))
 	}
+
 	return out, nil
 }
 
 func (s *Server) isValidCommand(command string) bool {
+	// regex pattern for valid command
 	var validCommandPattern = `^(?i)(?:"[A-Za-z0-9 ]+"|\b[A-Za-z0-9]+\b)(?:\s+"[^"]*"\s*|\s+\b[A-Za-z0-9]+\b\s*)*$`
 	re := regexp.MustCompile(validCommandPattern)
 	return re.MatchString(command)
 }
 
+// turns the raw command into Command type
+// returns error if command is unknown or invalid number of args
 func (s *Server) makeCommand(i []string, cc *ConnContext) (Command, error) {
 	switch {
 	case i[0] == "SELECT" || i[0] == "select":

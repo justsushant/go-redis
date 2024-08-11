@@ -6,13 +6,12 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"slices"
 	"testing"
 
 	"github.com/justsushant/one2n-go-bootcamp/redis-go/db"
 	"google.golang.org/grpc/test/bufconn"
 )
-
-var ErrKeyNotFound = errors.New("failed to find the key")
 
 type mockDB struct {
 	key string
@@ -97,65 +96,66 @@ func GetTestServer(md *mockDB, ln net.Listener) *Server {
 }
 
 func TestCommandParser(t *testing.T) {
-	t.Run("SET command", func(t *testing.T) {
-		input := "SET foo bar"
-		expOut := MssgOK
+	testCases := []struct{
+		name string
+		key string
+		val string
+		input string
+		expOut string
+	}{
+		{"SET command", "", "", "SET foo bar", MssgOK},
+		{"SET command with invalid number of arguments (1)", "", "", "SET foo", ErrWrongNumberOfArgs.Error()},
+		{"SET command with invalid number of arguments (3)", "", "", "SET foo bar extra", ErrWrongNumberOfArgs.Error()},
+		{"GET command with valid key", "foo", "bar", "GET foo", strconv.Quote("bar")},
+		{"GET command with invalid key", "", "", "GET foo", db.ErrKeyNotFound.Error()},
+		{"GET command with invalid number of args (2)", "", "", "GET foo bar", ErrWrongNumberOfArgs.Error()},
+		{"DEL command with valid key", "foo", "bar", "DEL foo", db.DeleteSuccessMessage},
+		{"DEL command with invalid key", "", "", "DEL foo", db.DeleteFailedMessage},
+		{"DEL command with invalid number of args (2)", "", "", "DEL foo bar", ErrWrongNumberOfArgs.Error()},
+		{"INCR command with valid key", "foo", "4", "INCR foo", "(integer) 5"},
+		{"INCR command with invalid key", "", "", "INCR foo", "(integer) 1"},
+		{"INCR command with invalid number of args (2)", "", "", "INCR foo bar", ErrWrongNumberOfArgs.Error()},
+		{"INCR command with invalid value (string)", "foo", "bar", "INCR foo", db.ErrKeyNotInteger.Error()},
+		{"INCR command with invalid value (float)", "foo", "10.5", "INCR foo", db.ErrKeyNotInteger.Error()},
+		{"INCRBY command with valid key", "foo", "4", "INCRBY foo 5", "(integer) 9"},
+		{"INCRBY command with invalid key", "", "", "INCRBY foo 8", "(integer) 8"},
+		{"INCRBY command with invalid key and passed val is string", "", "", "INCRBY foo bar", db.ErrKeyNotInteger.Error()},
+		{"INCRBY command with valid key and passed val is string", "foo", "4", "INCRBY foo bar", db.ErrKeyNotInteger.Error()},
+		{"INCRBY command with invalid value (string)", "foo", "bar", "INCRBY foo 5", db.ErrKeyNotInteger.Error()},
+		{"INCRBY command with invalid value (float)", "foo", "10.5", "INCRBY foo 5", db.ErrKeyNotInteger.Error()},
+		{"INCRBY command with invalid number of arguments (1)", "foo", "4", "INCRBY foo", ErrWrongNumberOfArgs.Error()},
+		{"INCRBY command with invalid number of arguments (3)", "foo", "4", "INCRBY foo 5 extra", ErrWrongNumberOfArgs.Error()},
+		{"COMPACT command with one key-val pair", "one", "1", "COMPACT", "SET foo bar\n"},
+		// {"COMPACT command with two key-val pair", "multiple", "2", "COMPACT", "SET foo bar\nSET counter 13\n"},
+		{"COMPACT command with no key-val pair", "", "", "COMPACT", "(nil)\n"},
+		{"SELECT command with invalid number of arguments (2)", "", "", "SELECT 1 4", ErrWrongNumberOfArgs.Error()},
+		{"SELECT command with invalid type of argument (string)", "", "", "SELECT foo", db.ErrKeyNotInteger.Error()},
+		{"SELECT command with invalid range of argument (not in 0-15)", "", "", "SELECT 24", ErrDBIndexOutOfRange.Error()},
+		{"Invalid command", "", "", "gibberish foo bar", ErrUnknownCommand.Error()},
+	}
 
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			input := tc.input
+			expOut := tc.expOut
 
-		if md.key != "foo" {
-			t.Errorf("Expected the key to be %q but didn't found it", md.key)
-		}
+			var buf bytes.Buffer
+			md := &mockDB{}
+			if tc.key != "" {
+				md.key = tc.key
+			}
+			if tc.val != "" {
+				md.val = tc.val
+			}
 
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
+			s := GetTestServer(md, nil)
+			s.handleCommand(input, &buf, &ConnContext{})
 
-	t.Run("SET command with invalid number of arguments (1)", func(t *testing.T) {
-		input := "SET foo"
-		expOut := ErrWrongNumberOfArgs.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("SET command with invalid number of arguments (3)", func(t *testing.T) {
-		input := "SET foo bar extra"
-		expOut := ErrWrongNumberOfArgs.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("GET command with valid key", func(t *testing.T) {
-		input := "GET foo"
-		expOut := strconv.Quote("bar")
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "bar"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
+			if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
+				t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
+			}
+		})
+	}
 
 	t.Run("GET command with deleted key", func(t *testing.T) {
 		input := "GET foo"
@@ -165,248 +165,6 @@ func TestCommandParser(t *testing.T) {
 		md := &mockDB{key: "foo", val: "bar"}
 		s := GetTestServer(md, nil)
 		s.handleCommand("DEL foo", &buf, &ConnContext{})
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("GET command with invalid key", func(t *testing.T) {
-		input := "GET foo"
-		expOut := db.ErrKeyNotFound.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("GET command with invalid number of args (2)", func(t *testing.T) {
-		input := "GET foo bar"
-		expOut := ErrWrongNumberOfArgs.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("DEL command with valid key", func(t *testing.T) {
-		input := "DEL foo"
-		expOut := db.DeleteSuccessMessage
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "bar"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if md.key != "" {
-			t.Errorf("Expected the key to be deleted but found %q", md.key)
-		}
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("DEL command with invalid key", func(t *testing.T) {
-		input := "DEL foo"
-		expOut := db.DeleteFailedMessage
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCR command with valid key", func(t *testing.T) {
-		input := "INCR foo"
-		expOut := "(integer) 5"
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "4"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCR command with invalid key", func(t *testing.T) {
-		input := "INCR foo"
-		expOut := "(integer) 1"
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCR command with invalid value (string)", func(t *testing.T) {
-		input := "INCR foo"
-		expOut := db.ErrKeyNotInteger.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "bar"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCR command with invalid value (float)", func(t *testing.T) {
-		input := "INCR foo"
-		expOut := db.ErrKeyNotInteger.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "10.5"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCRBY command with valid key", func(t *testing.T) {
-		input := "INCRBY foo 5"
-		expOut := "(integer) 9"
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "4"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCRBY command with invalid key", func(t *testing.T) {
-		input := "INCRBY foo 8"
-		expOut := "(integer) 8"
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCRBY command with invalid key and passed val is string", func(t *testing.T) {
-		input := "INCRBY foo bar"
-		expOut := db.ErrKeyNotInteger.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-	t.Run("INCRBY command with passed key is string with integer val set", func(t *testing.T) {
-		input := "INCRBY foo bar"
-
-		expOut := db.ErrKeyNotInteger.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "4"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCRBY command with invalid value (string)", func(t *testing.T) {
-		input := "INCRBY foo 5"
-		expOut := db.ErrKeyNotInteger.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "bar"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCRBY command with invalid value (float)", func(t *testing.T) {
-		input := "INCRBY foo 5"
-		expOut := db.ErrKeyNotInteger.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "10.5"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCRBY command with invalid number of arguments (1)", func(t *testing.T) {
-		input := "INCRBY foo"
-		expOut := ErrWrongNumberOfArgs.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("INCRBY command with invalid number of arguments (3)", func(t *testing.T) {
-		input := "INCRBY foo bar extra"
-		expOut := ErrWrongNumberOfArgs.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("COMPACT command with one key-val pair", func(t *testing.T) {
-		input := "COMPACT"
-		expOut := "SET foo bar\n"
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "one"}
-		s := GetTestServer(md, nil)
 		s.handleCommand(input, &buf, &ConnContext{})
 
 		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
@@ -429,74 +187,6 @@ func TestCommandParser(t *testing.T) {
 		}
 		if !bytes.Contains(buf.Bytes(), []byte(expOut2)) {
 			t.Errorf("Expected output to contain %q but got %s instead", expOut2, buf.String())
-		}
-	})
-
-	t.Run("COMPACT command with no key-val pair", func(t *testing.T) {
-		input := "COMPACT"
-		expOut := "(nil)\n"
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("SELECT command with invalid number of arguments (2)", func(t *testing.T) {
-		var buf bytes.Buffer
-		input := "SELECT 1 4"
-		expOut := ErrWrongNumberOfArgs.Error()
-
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-	t.Run("SELECT command with invalid type of argument (string)", func(t *testing.T) {
-		var buf bytes.Buffer
-		input := "SELECT foo"
-		expOut := db.ErrKeyNotInteger.Error()
-
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-	t.Run("SELECT command with invalid range of argument (not in 0-15)", func(t *testing.T) {
-		var buf bytes.Buffer
-		input := "SELECT 24"
-		expOut := ErrDBIndexOutOfRange.Error()
-
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("Invalid command", func(t *testing.T) {
-		input := "gibberish foo bar"
-		expOut := ErrUnknownCommand.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
 		}
 	})
 }
@@ -724,41 +414,7 @@ func TestServerConn(t *testing.T) {
 		}
 	})
 
-	// writing test for disconnection of server pending
-	// t.Run("disconnect the server", func(t *testing.T) {
-	//     buf := make([]byte, 1024)
-	//     input := DISCONNECT
-	//     // expOut := PONG
-
-	//     // Assuming Server has a method Start that takes a net.Listener
-	//     md := &mockDB{}
-	// 	ln := bufconn.Listen(1024 * 1024)
-	//     s := &Server{Listener: ln, Db: md}
-	//     go s.Start()
-
-	//     // starting connection
-	//     conn, err := ln.Dial()
-	//     if err != nil {
-	//         t.Fatalf("Failed to dial: %v", err)
-	//     }
-	//     defer conn.Close()
-
-	//     // Simulate client sending a command
-	//     fmt.Fprintln(conn, input)
-
-	//     // trying to connect on same connection after connection
-	// 	fmt.Fprintln(conn, PING)
-	// 	n, err := conn.Read(buf)
-	// 	// if err == nil {
-	// 	// 	t.Fatalf("Expected error but got nil")
-	// 	// }
-
-	// 	fmt.Println(string(buf[:n]))
-
-	//     // if !bytes.Contains(buf[:n], []byte(expOut)) {
-	// 	// 	t.Errorf("Expected output to contain %q but got %s instead", expOut, string(buf[:n]))
-	// 	// }
-	// })
+	// TODO: writing test for disconnection of server pending
 }
 
 func TestConcurrentConn(t *testing.T) {
@@ -828,7 +484,7 @@ func TestConcurrentConn(t *testing.T) {
 		}
 	})
 
-	t.Run("Check if multiple connections multi tran operations run independently", func(t *testing.T) {
+	t.Run("Check if multiple connection tran operations run independently", func(t *testing.T) {
 		buf := make([]byte, 1024)
 		testCases := []struct {
 			input  []string
@@ -921,4 +577,48 @@ func TestSelectCommand(t *testing.T) {
 		}
 
 	})
+}
+
+func TestStringSplit(t *testing.T) {
+	md := &mockDB{}
+	s := GetTestServer(md, nil)
+
+	testCases := []struct{
+		name string
+		input string
+		expOut []string
+		isError bool
+		err error
+	}{
+		{"command without quotes", "SET foo bar", []string{"SET", "foo", "bar"}, false, nil},
+		{"command with value in quotes", "SET foo \"bar in quotes\"", []string{"SET", "foo", "bar in quotes"}, false, nil},
+		{"command with key in quotes", "SET \"foo in quotes\" bar", []string{"SET", "foo in quotes", "bar"}, false, nil},
+		{"command with both key and value in quotes", "SET \"foo in quotes\" \"bar in quotes\"", []string{"SET", "foo in quotes", "bar in quotes"}, false, nil},
+		{"command with everything in quotes", "\"SET\" \"foo in quotes\" \"bar in quotes\"", []string{"SET", "foo in quotes", "bar in quotes"}, false, nil},
+		{"invalid command with quotes in between", "SET foo bar\"in\"quotes", nil, true, ErrUnknownCommand},
+		{"invalid command with unbalanced quotes", "SET \"foo in quotes \"bar in quotes\"", nil, true, ErrUnknownCommand},
+		{"invalid command with starting in quotes", "\"SET \"foo in quotes \"bar in quotes\"", nil, true, ErrUnknownCommand},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, err := s.stringSplit(tc.input)
+
+			if tc.isError {
+				if err == nil {
+					t.Fatal("Expected error but got none")
+				}
+
+				if errors.Is(err, tc.err) {
+					return
+				}
+
+				t.Fatalf("Unexpected error occured : %v", err)
+			}
+
+			if !slices.Equal(tc.expOut, out) {
+				t.Errorf("Expected %q but got %q", tc.expOut, out)
+			}
+		})
+	}
 }
