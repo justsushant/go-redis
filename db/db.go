@@ -9,8 +9,6 @@ import (
 )
 
 var ErrKeyNotFound = errors.New("(nil)")
-
-// var ErrKeyNotFound = errors.New("failed to find the key")
 var ErrKeyNotInteger = errors.New("value is not an integer or out of range")
 var SetSuccessMessage = "OK"
 var DeleteSuccessMessage = "(integer) 1"

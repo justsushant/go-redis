@@ -151,7 +151,7 @@ func (s *Server) handleCommand(input string, out io.Writer, cc *ConnContext) {
 		}
 	}
 
-	// only add commands to multi tran isMulti is ON & if they aren't commands related to multi
+	// only add commands to multi tran if isMulti is ON & if they aren't commands related to multi
 	if cc.isMulti && c.name != EXEC && c.name != DISCARD && c.name != MULTI {
 		cc.multiCommandArr = append(cc.multiCommandArr, c)
 		fmt.Fprintln(out, QUEUED)
