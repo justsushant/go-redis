@@ -1,30 +1,30 @@
+# Key-Value DB (Redis) Exercise
 
-# go-redis
-
-This project is a simplified clone of the popular in-memory data structure store, Redis. It is designed to emulate basic functionalities of Redis, including data storage, retrieval, and manipulation, with support for transactions and database index.
+This exercise involves creating a simplified clone of the popular in-memory key-value store, Redis. It is designed to emulate basic functionalities of Redis, including data storage, retrieval, and manipulation, with support for transactions and database indexing.
 
 The server can be started to accept connections via an HTTP client, allowing interaction over HTTP requests.
 
 ## Supported Commands
-- GET key: retrives record
-- SET key val: sets record
-- DEL key: deletes record
-- INCR key: increments integer value by 1
-- INCRBY key val: increments integer value by specified number
-- MULTI: initiates transaction
-- EXEC: executes transaction
-- DISCARD: discards transaction
-- COMPACT: returns the current state of store
-- DISCONNECT: disconnects the client
 
-## Run 
-This requires Go installation to generate the binary for go-redis server. 
-```
-go build -o go-redis .
-./go-redis
-```
+The commands work similarly to those in actual Redis. The list of supported commands is as follows:
+- **GET**: retrieves a record
+- **SET**: sets a record
+- **DEL**: deletes a record
+- **INCR**: increments an integer value by 1
+- **INCRBY**: increments an integer value by the specified number
+- **MULTI**: initiates a transaction
+- **EXEC**: executes a transaction
+- **DISCARD**: discards a transaction
+- **COMPACT**: returns the current state of the store
+- **DISCONNECT**: disconnects the client
 
-You can connect to this server using any HTTP client, say netcat (assuming, server is running on localhost:8080)
+## Usage 
+
+1. Run the command below to build and run the binary:
+   ```
+   make run
+   ```
+2. You can connect to this server using any HTTP client, say netcat (assuming, server is running on localhost:8080)
 ```
 nc localhost 8080
 ```

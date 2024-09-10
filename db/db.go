@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/store"
-	// "github.com/justsushant/one2n-go-bootcamp/go-redis/store/inMemoryStore"
 )
 
 var ErrKeyNotFound = errors.New("(nil)")

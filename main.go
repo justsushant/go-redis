@@ -11,6 +11,8 @@ import (
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inMemoryStore"
 )
 
+const DEFAULT_PORT = "8080"
+
 func main() {
 	// load env file
 	err := godotenv.Load()
@@ -19,10 +21,7 @@ func main() {
 	}
 
 	// set the port
-	port, ok := os.LookupEnv("PORT")
-	if !ok {
-		fmt.Println("Couldn't find the port variable")
-	}
+	port := getEnv("PORT", DEFAULT_PORT)
 
 	// start listening
 	ln, err := net.Listen("tcp", port)
@@ -38,5 +37,12 @@ func main() {
 
 	// start the server
 	s.Start()
+}
 
+func getEnv(key, fallback string) string {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	return value
 }
