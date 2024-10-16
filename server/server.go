@@ -331,7 +331,7 @@ func (s *Server) compactAction(cc *ConnContext) string {
 
 	var dataArr []string
 	for k, v := range data {
-		dataArr = append(dataArr, fmt.Sprintf("%s %s %s\n", SET, k, v))
+		dataArr = append(dataArr, fmt.Sprintf("%s %s %s", SET, k, v))
 	}
 	return strings.Join(dataArr, "\n")
 }

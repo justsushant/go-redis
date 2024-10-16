@@ -96,101 +96,74 @@ func GetTestServer(md *mockDB, ln net.Listener) *Server {
 	}
 }
 
+type commandData struct {
+	key    string
+	val    string
+	input  string
+	expOut string
+}
+
 func TestHandleCommandWithNonMultiCommands(t *testing.T) {
 	testCases := []struct {
-		name   string
-		key    string
-		val    string
-		input  string
-		expOut string
+		name string
+		data []commandData
 	}{
-		{"PING command", "", "", PING, PONG},
-		{"SET command", "", "", "SET foo bar", MssgOK},
-		{"SET command with invalid number of arguments (1)", "", "", "SET foo", ErrWrongNumberOfArgs.Error()},
-		{"SET command with invalid number of arguments (3)", "", "", "SET foo bar extra", ErrWrongNumberOfArgs.Error()},
-		{"GET command with valid key", "foo", "bar", "GET foo", strconv.Quote("bar")},
-		{"GET command with invalid key", "", "", "GET foo", db.ErrKeyNotFound.Error()},
-		{"GET command with invalid number of args (2)", "", "", "GET foo bar", ErrWrongNumberOfArgs.Error()},
-		{"DEL command with valid key", "foo", "bar", "DEL foo", db.DeleteSuccessMessage},
-		{"DEL command with invalid key", "", "", "DEL foo", db.DeleteFailedMessage},
-		{"DEL command with invalid number of args (2)", "", "", "DEL foo bar", ErrWrongNumberOfArgs.Error()},
-		{"INCR command with valid key", "foo", "4", "INCR foo", "(integer) 5"},
-		{"INCR command with invalid key", "", "", "INCR foo", "(integer) 1"},
-		{"INCR command with invalid number of args (2)", "", "", "INCR foo bar", ErrWrongNumberOfArgs.Error()},
-		{"INCR command with invalid value (string)", "foo", "bar", "INCR foo", db.ErrKeyNotInteger.Error()},
-		{"INCR command with invalid value (float)", "foo", "10.5", "INCR foo", db.ErrKeyNotInteger.Error()},
-		{"INCRBY command with valid key", "foo", "4", "INCRBY foo 5", "(integer) 9"},
-		{"INCRBY command with invalid key", "", "", "INCRBY foo 8", "(integer) 8"},
-		{"INCRBY command with invalid key and passed val is string", "", "", "INCRBY foo bar", db.ErrKeyNotInteger.Error()},
-		{"INCRBY command with valid key and passed val is string", "foo", "4", "INCRBY foo bar", db.ErrKeyNotInteger.Error()},
-		{"INCRBY command with invalid value (string)", "foo", "bar", "INCRBY foo 5", db.ErrKeyNotInteger.Error()},
-		{"INCRBY command with invalid value (float)", "foo", "10.5", "INCRBY foo 5", db.ErrKeyNotInteger.Error()},
-		{"INCRBY command with invalid number of arguments (1)", "foo", "4", "INCRBY foo", ErrWrongNumberOfArgs.Error()},
-		{"INCRBY command with invalid number of arguments (3)", "foo", "4", "INCRBY foo 5 extra", ErrWrongNumberOfArgs.Error()},
-		{"COMPACT command with one key-val pair", "one", "1", "COMPACT", "SET foo bar\n"},
+		{"PING command", []commandData{{"", "", PING, PONG}}},
+		{"SET command", []commandData{{"", "", "SET foo bar", MssgOK}}},
+		{"SET command with invalid number of arguments (1)", []commandData{{"", "", "SET foo", ErrWrongNumberOfArgs.Error()}}},
+		{"SET command with invalid number of arguments (3)", []commandData{{"", "", "SET foo bar extra", ErrWrongNumberOfArgs.Error()}}},
+		{"GET command with valid key", []commandData{{"foo", "bar", "GET foo", strconv.Quote("bar")}}},
+		{"GET command with invalid key", []commandData{{"", "", "GET foo", db.ErrKeyNotFound.Error()}}},
+		{"GET command with invalid number of args (2)", []commandData{{"", "", "GET foo bar", ErrWrongNumberOfArgs.Error()}}},
+		{"GET command with deleted key", []commandData{{"foo", "bar", "DEL foo", db.DeleteSuccessMessage}, {"", "", "GET foo", db.ErrKeyNotFound.Error()}}},
+		{"DEL command with valid key", []commandData{{"foo", "bar", "DEL foo", db.DeleteSuccessMessage}}},
+		{"DEL command with invalid key", []commandData{{"", "", "DEL foo", db.DeleteFailedMessage}}},
+		{"DEL command with invalid number of args (2)", []commandData{{"", "", "DEL foo bar", ErrWrongNumberOfArgs.Error()}}},
+		{"INCR command with valid key", []commandData{{"foo", "4", "INCR foo", "(integer) 5"}}},
+		{"INCR command with invalid key", []commandData{{"", "", "INCR foo", "(integer) 1"}}},
+		{"INCR command with invalid number of args (2)", []commandData{{"", "", "INCR foo bar", ErrWrongNumberOfArgs.Error()}}},
+		{"INCR command with invalid value (string)", []commandData{{"foo", "bar", "INCR foo", db.ErrKeyNotInteger.Error()}}},
+		{"INCR command with invalid value (float)", []commandData{{"foo", "10.5", "INCR foo", db.ErrKeyNotInteger.Error()}}},
+		{"INCRBY command with valid key", []commandData{{"foo", "4", "INCRBY foo 5", "(integer) 9"}}},
+		{"INCRBY command with invalid key", []commandData{{"", "", "INCRBY foo 8", "(integer) 8"}}},
+		{"INCRBY command with invalid key and passed val is string", []commandData{{"", "", "INCRBY foo bar", db.ErrKeyNotInteger.Error()}}},
+		{"INCRBY command with valid key and passed val is string", []commandData{{"foo", "4", "INCRBY foo bar", db.ErrKeyNotInteger.Error()}}},
+		{"INCRBY command with invalid value (string)", []commandData{{"foo", "bar", "INCRBY foo 5", db.ErrKeyNotInteger.Error()}}},
+		{"INCRBY command with invalid value (float)", []commandData{{"foo", "10.5", "INCRBY foo 5", db.ErrKeyNotInteger.Error()}}},
+		{"INCRBY command with invalid number of arguments (1)", []commandData{{"foo", "4", "INCRBY foo", ErrWrongNumberOfArgs.Error()}}},
+		{"INCRBY command with invalid number of arguments (3)", []commandData{{"foo", "4", "INCRBY foo 5 extra", ErrWrongNumberOfArgs.Error()}}},
+		{"COMPACT command with one key-val pair", []commandData{{"one", "1", "COMPACT", "SET foo bar\n"}}},
 		// {"COMPACT command with two key-val pair", "multiple", "2", "COMPACT", "SET foo bar\nSET counter 13\n"},
-		{"COMPACT command with no key-val pair", "", "", "COMPACT", "(nil)\n"},
-		{"SELECT command with invalid number of arguments (2)", "", "", "SELECT 1 4", ErrWrongNumberOfArgs.Error()},
-		{"SELECT command with invalid type of argument (string)", "", "", "SELECT foo", db.ErrKeyNotInteger.Error()},
-		{"SELECT command with invalid range of argument (not in 0-15)", "", "", "SELECT 24", ErrDBIndexOutOfRange.Error()},
-		{"Invalid command", "", "", "gibberish foo bar", ErrUnknownCommand.Error()},
+		{"COMPACT command with no key-val pair", []commandData{{"", "", "COMPACT", "(nil)\n"}}},
+		{"SELECT command with invalid number of arguments (2)", []commandData{{"", "", "SELECT 1 4", ErrWrongNumberOfArgs.Error()}}},
+		{"SELECT command with invalid type of argument (string)", []commandData{{"", "", "SELECT foo", db.ErrKeyNotInteger.Error()}}},
+		{"SELECT command with invalid range of argument (not in 0-15)", []commandData{{"", "", "SELECT 24", ErrDBIndexOutOfRange.Error()}}},
+		{"Invalid command", []commandData{{"", "", "gibberish foo bar", ErrUnknownCommand.Error()}}},
+		{"COMPACT command with two key-val pair", []commandData{{"multiple", "", "COMPACT", "SET foo bar\nSET counter 13\n"}}},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			input := tc.input
-			expOut := tc.expOut
-
 			var buf bytes.Buffer
 			md := &mockDB{}
-			if tc.key != "" {
-				md.key = tc.key
-			}
-			if tc.val != "" {
-				md.val = tc.val
-			}
-
 			s := GetTestServer(md, nil)
-			s.handleCommand(input, &buf, &ConnContext{})
 
-			if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
+			for _, d := range tc.data {
+				if d.key != "" {
+					md.key = d.key
+				}
+				if d.val != "" {
+					md.val = d.val
+				}
+
+				s.handleCommand(d.input, &buf, &ConnContext{})
+
+				if !bytes.Contains(buf.Bytes(), []byte(d.expOut)) {
+					t.Errorf("Expected output to contain %q but got %s instead", d.expOut, buf.String())
+				}
 			}
 		})
 	}
-
-	t.Run("GET command with deleted key", func(t *testing.T) {
-		input := "GET foo"
-		expOut := db.ErrKeyNotFound.Error()
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "foo", val: "bar"}
-		s := GetTestServer(md, nil)
-		s.handleCommand("DEL foo", &buf, &ConnContext{})
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, buf.String())
-		}
-	})
-
-	t.Run("COMPACT command with two key-val pair", func(t *testing.T) {
-		input := "COMPACT"
-		expOut1 := "SET foo bar\n"
-		expOut2 := "SET counter 13\n"
-
-		var buf bytes.Buffer
-		md := &mockDB{key: "multiple"}
-		s := GetTestServer(md, nil)
-		s.handleCommand(input, &buf, &ConnContext{})
-
-		if !bytes.Contains(buf.Bytes(), []byte(expOut1)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut1, buf.String())
-		}
-		if !bytes.Contains(buf.Bytes(), []byte(expOut2)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut2, buf.String())
-		}
-	})
 }
 
 func TestHandleCommandWithMultiCommands(t *testing.T) {
