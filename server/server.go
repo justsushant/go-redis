@@ -22,28 +22,28 @@ var (
 	ErrMultiCommandNested        = errors.New("multi calls can not be nested")
 	ErrDBIndexOutOfRange         = errors.New("(error) ERR DB index is out of range")
 	ErrKeyNotFound               = errors.New("failed to find the key")
-	MssgEmptyArray               = "(empty array)"
-	MssgOK                       = "OK"
-	MssgNil                      = "(nil)"
-	DbRangeMin                   = 0
-	DbRangeMax                   = 15
 )
 
 const (
-	GET        string = "GET"
-	SET        string = "SET"
-	DEL        string = "DEL"
-	INCR       string = "INCR"
-	INCRBY     string = "INCRBY"
-	MULTI      string = "MULTI"
-	QUEUED     string = "QUEUED"
-	EXEC       string = "EXEC"
-	DISCARD    string = "DISCARD"
-	COMPACT    string = "COMPACT"
-	PING       string = "PING"
-	PONG       string = "PONG"
-	DISCONNECT string = "DISCONNECT"
-	SELECT     string = "SELECT"
+	GET            string = "GET"
+	SET            string = "SET"
+	DEL            string = "DEL"
+	INCR           string = "INCR"
+	INCRBY         string = "INCRBY"
+	MULTI          string = "MULTI"
+	QUEUED         string = "QUEUED"
+	EXEC           string = "EXEC"
+	DISCARD        string = "DISCARD"
+	COMPACT        string = "COMPACT"
+	PING           string = "PING"
+	PONG           string = "PONG"
+	DISCONNECT     string = "DISCONNECT"
+	SELECT         string = "SELECT"
+	MssgEmptyArray string = "(empty array)"
+	MssgOK         string = "OK"
+	MssgNil        string = "(nil)"
+	DbRangeMin     int    = 0
+	DbRangeMax     int    = 15
 )
 
 type Command struct {
@@ -117,7 +117,7 @@ func (s *Server) handleConnection(conn net.Conn, cc *ConnContext) {
 		n, err := conn.Read(buf)
 		if err != nil {
 			if err != io.EOF {
-				fmt.Println("Error reading:", err.Error())
+				fmt.Fprintln(conn, "Error reading:", err.Error())
 			}
 			break
 		}
@@ -159,12 +159,12 @@ func (s *Server) handleCommand(input string, out io.Writer, cc *ConnContext) {
 	}
 
 	// take appropriate action
-	resp := s.takeAction(c, cc)
+	resp := s.takeAction(cc, c)
 	fmt.Fprintln(out, resp)
 }
 
 // takes action based on the command name
-func (s *Server) takeAction(c Command, cc *ConnContext) string {
+func (s *Server) takeAction(cc *ConnContext, c Command) string {
 	switch c.name {
 	case PING:
 		return s.pingAction()
@@ -289,9 +289,9 @@ func (s *Server) execAction(cc *ConnContext) string {
 
 		// avoids the extra newline in final output for the last command in tran
 		if lastCmdArrIdx == i {
-			builder.WriteString(s.takeAction(c, cc))
+			builder.WriteString(s.takeAction(cc, c))
 		} else {
-			builder.WriteString(fmt.Sprintln(s.takeAction(c, cc)))
+			builder.WriteString(fmt.Sprintln(s.takeAction(cc, c)))
 		}
 
 	}
@@ -322,11 +322,18 @@ func (s *Server) compactAction(cc *ConnContext) string {
 		return MssgNil
 	}
 
-	var builder strings.Builder
+	// string builder implementation
+	// var builder strings.Builder
+	// for k, v := range data {
+	// 	builder.WriteString(fmt.Sprintf("%s %s %s\n", SET, k, v))
+	// }
+	// return builder.String()
+
+	var dataArr []string
 	for k, v := range data {
-		builder.WriteString(fmt.Sprintf("%s %s %s\n", SET, k, v))
+		dataArr = append(dataArr, fmt.Sprintf("%s %s %s\n", SET, k, v))
 	}
-	return builder.String()
+	return strings.Join(dataArr, "\n")
 }
 
 func (s *Server) stringSplit(input string) ([]string, error) {
@@ -427,7 +434,7 @@ func (s *Server) makeCommand(i []string, cc *ConnContext) (Command, error) {
 	case i[0] == "INCR" || i[0] == "incr":
 		if len(i) != 2 {
 			if cc.isMulti {
-				cc.isTranDiscarded = 	true
+				cc.isTranDiscarded = true
 			}
 			return Command{}, fmt.Errorf("(error) ERR %v for '%s' command", ErrWrongNumberOfArgs, i[0])
 		}

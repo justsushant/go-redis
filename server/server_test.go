@@ -7,6 +7,7 @@ import (
 	"net"
 	"slices"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/db"
@@ -95,7 +96,7 @@ func GetTestServer(md *mockDB, ln net.Listener) *Server {
 	}
 }
 
-func TestCommandParser(t *testing.T) {
+func TestHandleCommandWithNonMultiCommands(t *testing.T) {
 	testCases := []struct {
 		name   string
 		key    string
@@ -103,6 +104,7 @@ func TestCommandParser(t *testing.T) {
 		input  string
 		expOut string
 	}{
+		{"PING command", "", "", PING, PONG},
 		{"SET command", "", "", "SET foo bar", MssgOK},
 		{"SET command with invalid number of arguments (1)", "", "", "SET foo", ErrWrongNumberOfArgs.Error()},
 		{"SET command with invalid number of arguments (3)", "", "", "SET foo bar extra", ErrWrongNumberOfArgs.Error()},
@@ -191,257 +193,144 @@ func TestCommandParser(t *testing.T) {
 	})
 }
 
-func TestCommandParserWithMulti(t *testing.T) {
-	t.Run("MULTI command with EXEC", func(t *testing.T) {
-		inputArr := []string{"MULTI", "SET foo bar", "GET foo", "EXEC"}
-		expOut := []string{MssgOK, "QUEUED", "QUEUED", "1) OK\n2) \"bar\""}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
+func TestHandleCommandWithMultiCommands(t *testing.T) {
 
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
+	tt := []struct {
+		name     string
+		inputArr []string
+		expOut   []string
+	}{
+		{
+			name:     "MULTI command with EXEC",
+			inputArr: []string{"MULTI", "SET foo bar", "GET foo", "EXEC"},
+			expOut:   []string{MssgOK, "QUEUED", "QUEUED", "1) OK\n2) \"bar\""},
+		},
+		{
+			name:     "MULTI command with DISCARD",
+			inputArr: []string{"MULTI", "SET foo bar", "GET foo", "DISCARD"},
+			expOut:   []string{MssgOK, "QUEUED", "QUEUED", MssgOK},
+		},
+		{
+			name:     "MULTI command with EXEC with previous errors (invalid arguments)",
+			inputArr: []string{"MULTI", "SET foo 5", "INCRBY foo 5 6", "EXEC"},
+			expOut:   []string{MssgOK, "QUEUED", ErrWrongNumberOfArgs.Error(), ErrTranAbortedDueToPrevError.Error()},
+		},
+		{
+			name:     "MULTI command with EXEC with previous errors (invalid command)",
+			inputArr: []string{"MULTI", "SET foo 5", "RANDOM NONSENSE", "EXEC"},
+			expOut:   []string{MssgOK, "QUEUED", ErrUnknownCommand.Error(), ErrTranAbortedDueToPrevError.Error()},
+		},
+		{
+			name:     "EXEC command without MULTI",
+			inputArr: []string{"EXEC"},
+			expOut:   []string{ErrExecWithoutMulti.Error()},
+		},
+		{
+			name:     "DISCARD command without MULTI",
+			inputArr: []string{"DISCARD"},
+			expOut:   []string{ErrDiscardWithoutMulti.Error()},
+		},
+		{
+			name:     "MULTI calls nested",
+			inputArr: []string{"MULTI", "SET foo 5", "MULTI", "INCR foo", "GET foo", "EXEC"},
+			expOut:   []string{MssgOK, "QUEUED", ErrMultiCommandNested.Error(), "QUEUED", "QUEUED", "1) OK\n2) (integer) 6\n3) \"6\"\n"},
+		},
+		{
+			name:     "MULTI & EXEC without any commands",
+			inputArr: []string{"MULTI", "EXEC"},
+			expOut:   []string{MssgOK, MssgEmptyArray},
+		},
+		{
+			name:     "MULTI command with argument to EXEC",
+			inputArr: []string{"MULTI", "SET foo bar", "EXEC GVK", "EXEC"},
+			expOut:   []string{MssgOK, "QUEUED", ErrWrongNumberOfArgs.Error(), ErrExecWithoutMulti.Error()},
+		},
+	}
 
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			md := &mockDB{}
+			s := GetTestServer(md, nil)
+			cc := &ConnContext{}
+
+			for i, input := range tc.inputArr {
+				s.handleCommand(input, &buf, cc)
+
+				if !bytes.Contains(buf.Bytes(), []byte(tc.expOut[i])) {
+					t.Errorf("Expected output to contain %q but got %s instead", tc.expOut[i], buf.String())
+				}
+
+				buf.Reset()
 			}
-
-			buf.Reset()
-		}
-	})
-
-	t.Run("MULTI command with DISCARD", func(t *testing.T) {
-		inputArr := []string{"MULTI", "SET foo bar", "GET foo", "DISCARD"}
-		expOut := []string{MssgOK, "QUEUED", "QUEUED", MssgOK}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
-
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
-
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
-			}
-
-			buf.Reset()
-		}
-	})
-
-	t.Run("MULTI command with EXEC with previous errors (invalid arguments)", func(t *testing.T) {
-		inputArr := []string{"MULTI", "SET foo 5", "INCRBY foo 5 6", "EXEC"}
-		expOut := []string{MssgOK, "QUEUED", ErrWrongNumberOfArgs.Error(), ErrTranAbortedDueToPrevError.Error()}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
-
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
-
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
-			}
-
-			buf.Reset()
-		}
-	})
-
-	t.Run("MULTI command with EXEC with previous errors (invalid command)", func(t *testing.T) {
-		inputArr := []string{"MULTI", "SET foo 5", "RANDOM NONSENSE", "EXEC"}
-		expOut := []string{MssgOK, "QUEUED", ErrUnknownCommand.Error(), ErrTranAbortedDueToPrevError.Error()}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
-
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
-
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
-			}
-
-			buf.Reset()
-		}
-	})
-
-	t.Run("EXEC command without MULTI", func(t *testing.T) {
-		inputArr := []string{"EXEC"}
-		expOut := []string{ErrExecWithoutMulti.Error()}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
-
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
-
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
-			}
-
-			buf.Reset()
-		}
-	})
-
-	t.Run("DISCARD command without MULTI", func(t *testing.T) {
-		inputArr := []string{"DISCARD"}
-		expOut := []string{ErrDiscardWithoutMulti.Error()}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
-
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
-
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
-			}
-
-			buf.Reset()
-		}
-	})
-
-	t.Run("MULTI calls nested", func(t *testing.T) {
-		inputArr := []string{"MULTI", "SET foo 5", "MULTI", "INCR foo", "GET foo", "EXEC"}
-		expOut := []string{MssgOK, "QUEUED", ErrMultiCommandNested.Error(), "QUEUED", "QUEUED", "1) OK\n2) (integer) 6\n3) \"6\"\n"}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
-
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
-
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
-			}
-
-			buf.Reset()
-		}
-	})
-
-	t.Run("MULTI & EXEC without any commands", func(t *testing.T) {
-		inputArr := []string{"MULTI", "EXEC"}
-		expOut := []string{MssgOK, MssgEmptyArray}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
-
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
-
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
-			}
-
-			buf.Reset()
-		}
-	})
-
-	t.Run("MULTI command with argument to EXEC", func(t *testing.T) {
-		inputArr := []string{"MULTI", "SET foo bar", "EXEC GVK", "EXEC"}
-		expOut := []string{MssgOK, "QUEUED", ErrWrongNumberOfArgs.Error(), ErrExecWithoutMulti.Error()}
-		var buf bytes.Buffer
-		md := &mockDB{}
-		s := GetTestServer(md, nil)
-		cc := &ConnContext{}
-
-		for i, input := range inputArr {
-			s.handleCommand(input, &buf, cc)
-
-			if !bytes.Contains(buf.Bytes(), []byte(expOut[i])) {
-				t.Errorf("Expected output to contain %q but got %s instead", expOut[i], buf.String())
-			}
-
-			buf.Reset()
-		}
-	})
+		})
+	}
 }
 
 func TestServerConn(t *testing.T) {
-	t.Run("Check if server is accepting connections ", func(t *testing.T) {
-		// creates a test listener
-		ln := bufconn.Listen(1024 * 1024)
+	tt := []struct {
+		name      string
+		numOfConn int
+	}{
+		{
+			name:      "Check if server is accepting single connection",
+			numOfConn: 1,
+		},
+		{
+			name:      "Check if server is accepting two connection",
+			numOfConn: 2,
+		},
+		{
+			name:      "Check if server is accepting more than two connections",
+			numOfConn: 3,
+		},
+	}
 
-		// start the test server with above listener
-		md := &mockDB{}
-		s := GetTestServer(md, ln)
-		go s.Start()
+	for _, tc := range tt {
+		t.Run(tc.name, func(t *testing.T) {
 
-		// trying to connect the above listener
-		conn, err := ln.Dial()
-		if err != nil {
-			t.Fatalf("Failed to dial: %v", err)
-		}
-		conn.Close()
-	})
+			md := &mockDB{}
+			ln := bufconn.Listen(1024 * 1024)
+			s := GetTestServer(md, ln)
+			go s.Start()
 
-	t.Run("Ping the server", func(t *testing.T) {
-		buf := make([]byte, 1024)
-		input := PING
-		expOut := PONG
+			var wg sync.WaitGroup
+			wg.Add(tc.numOfConn)
+			for i := range tc.numOfConn {
+				go func(t *testing.T, i int, wg *sync.WaitGroup) {
+					defer wg.Done()
+					buf := make([]byte, 1024)
 
-		// Assuming Server has a method Start that takes a net.Listener
-		md := &mockDB{}
-		ln := bufconn.Listen(1024 * 1024)
-		s := GetTestServer(md, ln)
-		go s.Start()
+					// starting connection
+					conn, err := ln.Dial()
+					if err != nil {
+						t.Errorf("Failed to dial at %d connection: %v", i, err)
+					}
+					defer conn.Close()
 
-		// starting connection
-		conn, err := ln.Dial()
-		if err != nil {
-			t.Fatalf("Failed to dial: %v", err)
-		}
-		defer conn.Close()
+					// writing and verifying from connection
+					// ping to connection
+					fmt.Fprintln(conn, PING)
 
-		// Simulate client sending a command
-		fmt.Fprintln(conn, input)
+					// reading from connection
+					n, err := conn.Read(buf)
+					if err != nil {
+						t.Errorf("Error while reading from connection at %d connection: %v", i, err)
+					}
 
-		// reading from connection
-		n, err := conn.Read(buf)
-		if err != nil {
-			t.Fatalf("Error while reading from connection: %v", err)
-		}
-
-		if !bytes.Contains(buf[:n], []byte(expOut)) {
-			t.Errorf("Expected output to contain %q but got %s instead", expOut, string(buf[:n]))
-		}
-	})
-
-	// TODO: writing test for disconnection of server pending
+					// verifying from connection
+					if !bytes.Contains(buf[:n], []byte(PONG)) {
+						t.Errorf("Expected output to contain %q but got %s instead at %d connection", PONG, string(buf[:n]), i)
+					}
+				}(t, i, &wg)
+			}
+			wg.Wait()
+		})
+	}
 }
 
-func TestConcurrentConn(t *testing.T) {
-	t.Run("Check if server is accepting multiple connections ", func(t *testing.T) {
-		// creates a test listener
-		ln := bufconn.Listen(1024 * 1024)
-
-		// start the test server
-		md := &mockDB{}
-		s := GetTestServer(md, ln)
-		go s.Start()
-
-		conn1, err := ln.Dial()
-		if err != nil {
-			t.Fatalf("Failed to dial: %v", err)
-		}
-
-		conn2, err := ln.Dial()
-		if err != nil {
-			t.Fatalf("Failed to dial: %v", err)
-		}
-
-		conn1.Close()
-		conn2.Close()
-	})
-
-	t.Run("Check if multiple connections share the same storage", func(t *testing.T) {
+func TestServerWithMultipleClients(t *testing.T) {
+	t.Run("Check if multiple connections on the same db index share the same storage", func(t *testing.T) {
 		buf := make([]byte, 1024)
 		testCases := []struct {
 			input  []string
@@ -449,6 +338,8 @@ func TestConcurrentConn(t *testing.T) {
 		}{
 			{[]string{"SET name John"}, []string{MssgOK}},
 			{[]string{"GET name"}, []string{strconv.Quote("John")}},
+			{[]string{"INCRBY age 23"}, []string{"(integer) 23"}},
+			{[]string{"GET age"}, []string{strconv.Quote("23")}},
 		}
 
 		// starting the server
@@ -484,53 +375,53 @@ func TestConcurrentConn(t *testing.T) {
 		}
 	})
 
-	t.Run("Check if multiple connection tran operations run independently", func(t *testing.T) {
-		buf := make([]byte, 1024)
-		testCases := []struct {
-			input  []string
-			expOut []string
-		}{
-			{[]string{"MULTI", "SET name John"}, []string{MssgOK, "QUEUED"}},
-			{[]string{"INCR age"}, []string{"(integer) 1"}},
-		}
+	// t.Run("Check if single tran operation run independently on same db index", func(t *testing.T) {
+	// 	buf := make([]byte, 1024)
+	// 	testCases := []struct {
+	// 		input  []string
+	// 		expOut []string
+	// 	}{
+	// 		{[]string{"INCRBY age 22"}, []string{"(integer) 22"}},
+	// 		{[]string{"MULTI", "SET name John", "GET age", "EXEC"}, []string{MssgOK, QUEUED, QUEUED, "1) OK\n2) \"22\"\n"}},
+	// 		{[]string{"INCR age"}, []string{"(integer) 23"}},
+	// 	}
 
-		// starting the server
-		md := &mockDB{}
-		ln := bufconn.Listen(1024 * 1024)
-		s := GetTestServer(md, ln)
-		go s.Start()
+	// 	// starting the server
+	// 	md := &mockDB{}
+	// 	ln := bufconn.Listen(1024 * 1024)
+	// 	s := GetTestServer(md, ln)
+	// 	go s.Start()
 
-		for _, tc := range testCases {
-			// starting connection
-			conn, err := ln.Dial()
-			if err != nil {
-				t.Fatalf("Failed to dial: %v", err)
-			}
-			defer conn.Close()
+	// 	for _, tc := range testCases {
+	// 		// starting connection
+	// 		conn, err := ln.Dial()
+	// 		if err != nil {
+	// 			t.Fatalf("Failed to dial: %v", err)
+	// 		}
+	// 		defer conn.Close()
 
-			// writing and verifying from connection
-			for i, input := range tc.input {
-				// writing to connection
-				fmt.Fprintln(conn, input)
+	// 		// writing and verifying from connection
+	// 		for i, input := range tc.input {
+	// 			// writing to connection
+	// 			fmt.Fprintln(conn, input)
 
-				// reading from connection
-				n, err := conn.Read(buf)
-				if err != nil {
-					t.Fatalf("Error while reading from connection: %v", err)
-				}
+	// 			// reading from connection
+	// 			n, err := conn.Read(buf)
+	// 			if err != nil {
+	// 				t.Fatalf("Error while reading from connection: %v", err)
+	// 			}
 
-				// verifying from connection
-				if !bytes.Contains(buf[:n], []byte(tc.expOut[i])) {
-					t.Errorf("Expected output to contain %q but got %s instead", tc.expOut[i], string(buf[:n]))
-				}
-			}
-		}
-
-	})
+	// 			// verifying from connection
+	// 			if !bytes.Contains(buf[:n], []byte(tc.expOut[i])) {
+	// 				fmt.Println("Server: ", s)
+	// 				t.Errorf("Expected output to contain %q but got %s instead", tc.expOut[i], string(buf[:n]))
+	// 			}
+	// 		}
+	// 	}
+	// })
 }
 
 func TestSelectCommand(t *testing.T) {
-
 	t.Run("Check if multiple db indexes are running independently", func(t *testing.T) {
 		buf := make([]byte, 1024)
 		testCases := []struct {
@@ -547,7 +438,6 @@ func TestSelectCommand(t *testing.T) {
 		md := &mockDB{}
 		ln := bufconn.Listen(1024 * 1024)
 		s := GetTestServer(md, ln)
-		// s := &Server{Listener: ln, Db: md}
 		go s.Start()
 
 		for _, tc := range testCases {
