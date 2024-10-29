@@ -10,7 +10,8 @@ import (
 	"strings"
 
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/db"
-	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inMemoryStore"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/db/keyvaldb"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inmemorystore"
 )
 
 var (
@@ -212,7 +213,7 @@ func (s *Server) selectAction(cc *ConnContext, val string) string {
 	// create db if its not there and set the index
 	_, ok := s.Db[i]
 	if !ok {
-		s.Db[i] = db.GetNewDB(inMemoryStore.NewInMemoryStore())
+		s.Db[i] = keyvaldb.GetNewDB(inmemorystore.NewInMemoryStore())
 	}
 	cc.dbIdx = i
 

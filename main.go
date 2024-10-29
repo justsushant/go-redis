@@ -7,8 +7,9 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/db"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/db/keyvaldb"
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/server"
-	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inMemoryStore"
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inmemorystore"
 )
 
 const DEFAULT_PORT = "8080"
@@ -33,7 +34,7 @@ func main() {
 	// TODO: Fix the name of constructors to somethig more suitable according to context
 	// TODO: FIx the name of interfaces according to their behaviour, usually end with "er"
 	s := &server.Server{
-		Db:       map[int]db.Database{0: db.GetNewDB(inMemoryStore.NewInMemoryStore())},
+		Db:       map[int]db.Database{0: keyvaldb.GetNewDB(inmemorystore.NewInMemoryStore())},
 		Listener: ln,
 	}
 

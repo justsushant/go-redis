@@ -1,8 +1,10 @@
-package db
+package keyvaldb
 
 import (
 	"errors"
 	"testing"
+
+	"github.com/justsushant/one2n-go-bootcamp/go-redis/db"
 )
 
 type mockStore struct {
@@ -35,7 +37,7 @@ func (m *mockStore) GetAll() map[string]string {
 	}
 }
 
-func GetTestDB(key, val string) Database {
+func GetTestDB(key, val string) *KeyValueDatabase {
 	return &KeyValueDatabase{
 		store: &mockStore{
 			key: key,
@@ -79,7 +81,7 @@ func TestGet(t *testing.T) {
 
 	t.Run("when key doesn't exists", func(t *testing.T) {
 		key := "foo"
-		expOut := ErrKeyNotFound
+		expOut := db.ErrKeyNotFound
 
 		mockStore := &mockStore{key: "abc", val: "pqr"}
 		newDB := &KeyValueDatabase{store: mockStore}
@@ -101,7 +103,7 @@ func TestGet(t *testing.T) {
 	t.Run("when key is deleted", func(t *testing.T) {
 		key := "foo"
 		val := "bar"
-		expOut := ErrKeyNotFound
+		expOut := db.ErrKeyNotFound
 
 		mockStore := &mockStore{key: key, val: val}
 		newDB := &KeyValueDatabase{store: mockStore}
@@ -124,7 +126,7 @@ func TestDeleteCommand(t *testing.T) {
 	t.Run("when key exists", func(t *testing.T) {
 		key := "foo"
 		val := "bar"
-		expOut := DELETE_SUCCESS_MESSAGE
+		expOut := db.DELETE_SUCCESS_MESSAGE
 
 		mockStore := &mockStore{key, val}
 		newDB := &KeyValueDatabase{store: mockStore}
@@ -143,13 +145,13 @@ func TestDeleteCommand(t *testing.T) {
 
 	t.Run("when key doesn't exists", func(t *testing.T) {
 		key := "foo"
-		expOut := DELETE_SUCCESS_MESSAGE
+		expOut := db.DELETE_SUCCESS_MESSAGE
 
 		mockStore := &mockStore{key: "abc", val: "pqr"}
 		newDB := &KeyValueDatabase{store: mockStore}
 		out := newDB.Del(key)
 
-		if out != DELETE_FAILED_MESSAGE {
+		if out != db.DELETE_FAILED_MESSAGE {
 			t.Errorf("Expected the value to be %v instead of %v", expOut, out)
 		}
 	})
@@ -181,7 +183,7 @@ func TestIncrCommand(t *testing.T) {
 	t.Run("when val is not an integer", func(t *testing.T) {
 		key := "abc"
 		val := "pqr"
-		expOut := ErrKeyNotInteger
+		expOut := db.ErrKeyNotInteger
 
 		mockStore := &mockStore{key: key, val: val}
 		newDB := &KeyValueDatabase{store: mockStore}
@@ -210,8 +212,8 @@ func TestIncrCommand(t *testing.T) {
 			t.Fatalf("Unexpected error occured: %v", err)
 		}
 
-		if mockStore.val != DEFAULT_INTEGER_VALUE {
-			t.Fatalf("Expected %s but got %s", DEFAULT_INTEGER_VALUE, mockStore.val)
+		if mockStore.val != db.DEFAULT_INTEGER_VALUE {
+			t.Fatalf("Expected %s but got %s", db.DEFAULT_INTEGER_VALUE, mockStore.val)
 		}
 
 		if out != expOut {
@@ -247,7 +249,7 @@ func TestIncrByCommand(t *testing.T) {
 	t.Run("when val is not an integer", func(t *testing.T) {
 		key := "foo"
 		val := "bar"
-		expOut := ErrKeyNotInteger
+		expOut := db.ErrKeyNotInteger
 
 		mockStore := &mockStore{key: key, val: val}
 		newDB := &KeyValueDatabase{store: mockStore}
@@ -267,7 +269,7 @@ func TestIncrByCommand(t *testing.T) {
 	t.Run("when passed val is not an integer", func(t *testing.T) {
 		key := "foo"
 		val := "bar"
-		expOut := ErrKeyNotInteger
+		expOut := db.ErrKeyNotInteger
 
 		mockStore := &mockStore{key: key, val: val}
 		newDB := &KeyValueDatabase{store: mockStore}

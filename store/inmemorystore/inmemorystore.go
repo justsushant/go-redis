@@ -1,4 +1,4 @@
-package inMemoryStore
+package inmemorystore
 
 import (
 	"sync"
@@ -25,7 +25,7 @@ func (i *InMemoryStore) Get(key string) (string, bool) {
 	i.RLock()
 	defer i.RUnlock()
 	proxy, ok := i.data[key]
-    return proxy, ok
+	return proxy, ok
 }
 
 func (i *InMemoryStore) Del(key string) {

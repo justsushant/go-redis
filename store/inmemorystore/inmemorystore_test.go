@@ -1,4 +1,4 @@
-package inMemoryStore
+package inmemorystore
 
 import (
 	"testing"
