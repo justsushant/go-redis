@@ -91,7 +91,7 @@ func (m *mockDB) GetAll() map[string]string {
 
 func GetTestServer(md *mockDB, ln net.Listener) *Server {
 	return &Server{
-		Db:       map[int]db.DbInterface{0: md},
+		Db:       map[int]db.Database{0: md},
 		Listener: ln,
 	}
 }
@@ -115,9 +115,9 @@ func TestHandleCommandWithNonMultiCommands(t *testing.T) {
 		{"GET command with valid key", []commandData{{"foo", "bar", "GET foo", strconv.Quote("bar")}}},
 		{"GET command with invalid key", []commandData{{"", "", "GET foo", db.ErrKeyNotFound.Error()}}},
 		{"GET command with invalid number of args (2)", []commandData{{"", "", "GET foo bar", ErrWrongNumberOfArgs.Error()}}},
-		{"GET command with deleted key", []commandData{{"foo", "bar", "DEL foo", db.DeleteSuccessMessage}, {"", "", "GET foo", db.ErrKeyNotFound.Error()}}},
-		{"DEL command with valid key", []commandData{{"foo", "bar", "DEL foo", db.DeleteSuccessMessage}}},
-		{"DEL command with invalid key", []commandData{{"", "", "DEL foo", db.DeleteFailedMessage}}},
+		{"GET command with deleted key", []commandData{{"foo", "bar", "DEL foo", db.DELETE_SUCCESS_MESSAGE}, {"", "", "GET foo", db.ErrKeyNotFound.Error()}}},
+		{"DEL command with valid key", []commandData{{"foo", "bar", "DEL foo", db.DELETE_SUCCESS_MESSAGE}}},
+		{"DEL command with invalid key", []commandData{{"", "", "DEL foo", db.DELETE_FAILED_MESSAGE}}},
 		{"DEL command with invalid number of args (2)", []commandData{{"", "", "DEL foo bar", ErrWrongNumberOfArgs.Error()}}},
 		{"INCR command with valid key", []commandData{{"foo", "4", "INCR foo", "(integer) 5"}}},
 		{"INCR command with invalid key", []commandData{{"", "", "INCR foo", "(integer) 1"}}},

@@ -64,7 +64,7 @@ type ConnContext struct {
 }
 
 type Server struct {
-	Db       map[int]db.DbInterface
+	Db       map[int]db.Database
 	Listener net.Listener
 }
 

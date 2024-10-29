@@ -35,8 +35,8 @@ func (m *mockStore) GetAll() map[string]string {
 	}
 }
 
-func GetTestDB(key, val string) *Db {
-	return &Db{
+func GetTestDB(key, val string) Database {
+	return &KeyValueDatabase{
 		store: &mockStore{
 			key: key,
 			val: val,
@@ -49,7 +49,7 @@ func TestSet(t *testing.T) {
 	val := "bar"
 
 	mockStore := &mockStore{key: key, val: val}
-	newDB := &Db{store: mockStore}
+	newDB := &KeyValueDatabase{store: mockStore}
 
 	newDB.Set(key, val)
 
@@ -65,7 +65,7 @@ func TestGet(t *testing.T) {
 		expOut := val
 
 		mockStore := &mockStore{key: key, val: val}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		v, err := newDB.Get(key)
 		if err != nil {
@@ -82,7 +82,7 @@ func TestGet(t *testing.T) {
 		expOut := ErrKeyNotFound
 
 		mockStore := &mockStore{key: "abc", val: "pqr"}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		_, err := newDB.Get(key)
 
@@ -104,7 +104,7 @@ func TestGet(t *testing.T) {
 		expOut := ErrKeyNotFound
 
 		mockStore := &mockStore{key: key, val: val}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 		newDB.Del(key)
 
 		_, err := newDB.Get(key)
@@ -124,10 +124,10 @@ func TestDeleteCommand(t *testing.T) {
 	t.Run("when key exists", func(t *testing.T) {
 		key := "foo"
 		val := "bar"
-		expOut := DeleteSuccessMessage
+		expOut := DELETE_SUCCESS_MESSAGE
 
 		mockStore := &mockStore{key, val}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		out := newDB.Del(key)
 		if out != expOut {
@@ -143,13 +143,13 @@ func TestDeleteCommand(t *testing.T) {
 
 	t.Run("when key doesn't exists", func(t *testing.T) {
 		key := "foo"
-		expOut := DeleteSuccessMessage
+		expOut := DELETE_SUCCESS_MESSAGE
 
 		mockStore := &mockStore{key: "abc", val: "pqr"}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 		out := newDB.Del(key)
 
-		if out != DeleteFailedMessage {
+		if out != DELETE_FAILED_MESSAGE {
 			t.Errorf("Expected the value to be %v instead of %v", expOut, out)
 		}
 	})
@@ -162,7 +162,7 @@ func TestIncrCommand(t *testing.T) {
 		expOut := "(integer) 5"
 
 		mockStore := &mockStore{key: key, val: val}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		out, err := newDB.Incr(key)
 		if err != nil {
@@ -184,7 +184,7 @@ func TestIncrCommand(t *testing.T) {
 		expOut := ErrKeyNotInteger
 
 		mockStore := &mockStore{key: key, val: val}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		_, err := newDB.Incr(key)
 		if err == nil {
@@ -201,17 +201,17 @@ func TestIncrCommand(t *testing.T) {
 	t.Run("when val doesn't exist", func(t *testing.T) {
 		key := "foo"
 		expOut := "(integer) 1"
-		
+
 		mockStore := &mockStore{}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		out, err := newDB.Incr(key)
 		if err != nil {
 			t.Fatalf("Unexpected error occured: %v", err)
 		}
 
-		if mockStore.val != DefaultIntegerValue {
-			t.Fatalf("Expected %s but got %s", DefaultIntegerValue, mockStore.val)
+		if mockStore.val != DEFAULT_INTEGER_VALUE {
+			t.Fatalf("Expected %s but got %s", DEFAULT_INTEGER_VALUE, mockStore.val)
 		}
 
 		if out != expOut {
@@ -228,7 +228,7 @@ func TestIncrByCommand(t *testing.T) {
 		expOut := "(integer) 25"
 
 		mockStore := &mockStore{key, val}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		out, err := newDB.Incrby(key, incrVal)
 		if err != nil {
@@ -250,7 +250,7 @@ func TestIncrByCommand(t *testing.T) {
 		expOut := ErrKeyNotInteger
 
 		mockStore := &mockStore{key: key, val: val}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		_, err := newDB.Incrby(key, "10")
 		if err == nil {
@@ -270,7 +270,7 @@ func TestIncrByCommand(t *testing.T) {
 		expOut := ErrKeyNotInteger
 
 		mockStore := &mockStore{key: key, val: val}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		_, err := newDB.Incrby(key, "bar+")
 		if err == nil {
@@ -290,7 +290,7 @@ func TestIncrByCommand(t *testing.T) {
 		expOut := "(integer) 28"
 
 		mockStore := &mockStore{}
-		newDB := &Db{store: mockStore}
+		newDB := &KeyValueDatabase{store: mockStore}
 
 		out, err := newDB.Incrby(key, val)
 		if err != nil {

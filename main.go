@@ -30,8 +30,10 @@ func main() {
 	}
 
 	// create a new server
+	// TODO: Fix the name of constructors to somethig more suitable according to context
+	// TODO: FIx the name of interfaces according to their behaviour, usually end with "er"
 	s := &server.Server{
-		Db:       map[int]db.DbInterface{0: db.GetNewDB(inMemoryStore.NewInMemoryStore())},
+		Db:       map[int]db.Database{0: db.GetNewDB(inMemoryStore.NewInMemoryStore())},
 		Listener: ln,
 	}
 
