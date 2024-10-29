@@ -47,44 +47,33 @@ func (d KeyValueDatabase) Del(key string) string {
 }
 
 func (d KeyValueDatabase) Incr(key string) (string, error) {
-	val, ok := d.store.Get(key)
-	if !ok {
-		d.store.Set(key, DEFAULT_INTEGER_VALUE)
-		return INTEGER + " " + DEFAULT_INTEGER_VALUE, nil
-	}
-
-	i, err := strconv.Atoi(val)
-	if err != nil {
-		return "", ErrKeyNotInteger
-	}
-
-	incrVal := i + 1
-	d.store.Set(key, strconv.Itoa(incrVal))
-	return INTEGER + " " + strconv.Itoa(incrVal), nil
+	return d.incrementBy(key, 1)
 }
 
-// TODO: fix the variable name vali & num (possible name, valInt and incrByNum respectively)
-// TODO: try to propagate the intent and functionality via variable names
-func (d KeyValueDatabase) Incrby(key, i string) (string, error) {
-	num, err := strconv.Atoi(i)
+func (d KeyValueDatabase) Incrby(key, incrBy string) (string, error) {
+	incrByInt, err := strconv.Atoi(incrBy)
 	if err != nil {
 		return "", ErrKeyNotInteger
 	}
 
+	return d.incrementBy(key, incrByInt)
+}
+
+func (d KeyValueDatabase) incrementBy(key string, incr int) (string, error) {
 	val, ok := d.store.Get(key)
 	if !ok {
-		d.store.Set(key, strconv.Itoa(num))
-		return INTEGER + " " + i, nil
+		d.store.Set(key, strconv.Itoa(incr))
+		return INTEGER + " " + strconv.Itoa(incr), nil
 	}
 
-	vali, err := strconv.Atoi(val)
+	valInt, err := strconv.Atoi(val)
 	if err != nil {
 		return "", ErrKeyNotInteger
 	}
 
-	incrVal := num + vali
-	d.store.Set(key, strconv.Itoa(incrVal))
-	return INTEGER + " " + strconv.Itoa(incrVal), nil
+	finalValue := valInt + incr
+	d.store.Set(key, strconv.Itoa(finalValue))
+	return INTEGER + " " + strconv.Itoa(finalValue), nil
 }
 
 func (d KeyValueDatabase) GetAll() map[string]string {
