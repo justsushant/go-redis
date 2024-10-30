@@ -14,7 +14,7 @@ type KeyValueDatabase struct {
 	store store.Store
 }
 
-func GetNewDB(store store.Store) *KeyValueDatabase {
+func NewDB(store store.Store) *KeyValueDatabase {
 	return &KeyValueDatabase{
 		store: store,
 	}

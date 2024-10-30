@@ -34,7 +34,7 @@ func (i *InMemoryStore) Del(key string) {
 	delete(i.data, key)
 }
 
-func NewInMemoryStore() *InMemoryStore {
+func NewStore() *InMemoryStore {
 	return &InMemoryStore{
 		data: make(map[string]string),
 	}

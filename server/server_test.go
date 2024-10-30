@@ -91,8 +91,8 @@ func (m *mockDB) GetAll() map[string]string {
 
 func GetTestServer(md *mockDB, ln net.Listener) *Server {
 	return &Server{
-		Db:       map[int]db.Database{0: md},
-		Listener: ln,
+		database: map[int]db.Database{0: md},
+		listener: ln,
 	}
 }
 
@@ -465,7 +465,7 @@ func TestStringSplit(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			out, err := s.stringSplit(tc.input)
+			out, err := s.parseInput(tc.input)
 
 			if tc.isError {
 				if err == nil {

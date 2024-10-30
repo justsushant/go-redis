@@ -9,7 +9,7 @@ func TestInMemoryStore(t *testing.T) {
 	val := "bar"
 
 	t.Run("set op", func(t *testing.T) {
-		var dummyStore = NewInMemoryStore()
+		var dummyStore = NewStore()
 		dummyStore.Set(key, val)
 
 		v, ok := dummyStore.data[key]
@@ -22,7 +22,7 @@ func TestInMemoryStore(t *testing.T) {
 	})
 
 	t.Run("get op for existing key", func(t *testing.T) {
-		var dummyStore = NewInMemoryStore()
+		var dummyStore = NewStore()
 		dummyStore.data[key] = val
 
 		v, ok := dummyStore.Get(key)
@@ -35,7 +35,7 @@ func TestInMemoryStore(t *testing.T) {
 	})
 
 	t.Run("get op for non-existent key", func(t *testing.T) {
-		var dummyStore = NewInMemoryStore()
+		var dummyStore = NewStore()
 
 		v, ok := dummyStore.Get(key)
 		if ok {
@@ -44,7 +44,7 @@ func TestInMemoryStore(t *testing.T) {
 	})
 
 	t.Run("del op", func(t *testing.T) {
-		var dummyStore = NewInMemoryStore()
+		var dummyStore = NewStore()
 		dummyStore.data[key] = val
 
 		dummyStore.Del(key)
@@ -55,7 +55,7 @@ func TestInMemoryStore(t *testing.T) {
 	})
 
 	t.Run("get all op", func(t *testing.T) {
-		var dummyStore = NewInMemoryStore()
+		var dummyStore = NewStore()
 		dummyStore.data["key1"] = "val1"
 		dummyStore.data["key2"] = "val2"
 		dummyStore.data["key3"] = "val3"

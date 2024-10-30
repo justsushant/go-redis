@@ -6,7 +6,6 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
-	"github.com/justsushant/one2n-go-bootcamp/go-redis/db"
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/db/keyvaldb"
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/server"
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inmemorystore"
@@ -31,13 +30,7 @@ func main() {
 	}
 
 	// create a new server
-	// TODO: Fix the name of constructors to somethig more suitable according to context
-	// TODO: FIx the name of interfaces according to their behaviour, usually end with "er"
-	// TODO: Encapsulate it in a constructor
-	s := &server.Server{
-		Db:       map[int]db.Database{0: keyvaldb.GetNewDB(inmemorystore.NewInMemoryStore())},
-		Listener: ln,
-	}
+	s := server.NewServer(keyvaldb.NewDB(inmemorystore.NewStore()), ln)
 
 	// start the server
 	s.Start()
