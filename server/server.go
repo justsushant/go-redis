@@ -1,7 +1,6 @@
 package server
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -14,56 +13,7 @@ import (
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/store/inmemorystore"
 )
 
-var (
-	ErrUnknownCommand            = errors.New("unknown command")
-	ErrWrongNumberOfArgs         = errors.New("wrong number of arguments")
-	ErrExecWithoutMulti          = errors.New("exec without multi")
-	ErrDiscardWithoutMulti       = errors.New("discard without multi")
-	ErrTranAbortedDueToPrevError = errors.New("transaction discarded because of previous errors")
-	ErrMultiCommandNested        = errors.New("multi calls can not be nested")
-	ErrDBIndexOutOfRange         = errors.New("(error) ERR DB index is out of range")
-	ErrKeyNotFound               = errors.New("failed to find the key")
-)
-
-const (
-	GET            string = "GET"
-	SET            string = "SET"
-	DEL            string = "DEL"
-	INCR           string = "INCR"
-	INCRBY         string = "INCRBY"
-	MULTI          string = "MULTI"
-	QUEUED         string = "QUEUED"
-	EXEC           string = "EXEC"
-	DISCARD        string = "DISCARD"
-	COMPACT        string = "COMPACT"
-	PING           string = "PING"
-	PONG           string = "PONG"
-	DISCONNECT     string = "DISCONNECT"
-	SELECT         string = "SELECT"
-	MssgEmptyArray string = "(empty array)"
-	MssgOK         string = "OK"
-	MssgNil        string = "(nil)"
-	DbRangeMin     int    = 0
-	DbRangeMax     int    = 15
-)
-
-type Command struct {
-	name string
-	key  string
-	val  string
-}
-
-func (c *Command) String() string {
-	return fmt.Sprintf("%s %s %s", c.name, c.key, c.val)
-}
-
-type ConnContext struct {
-	isMulti         bool      // to check if multi tran in progress
-	multiCommandArr []Command // to store commands of multi tran
-	isTranDiscarded bool      // to check if multi tran was discarded
-	dbIdx           int       // to store the db index
-}
-
+// TODO: private the fields after making a constructor in Server struct
 type Server struct {
 	Db       map[int]db.Database
 	Listener net.Listener
@@ -130,6 +80,8 @@ func (s *Server) handleConnection(conn net.Conn, cc *ConnContext) {
 
 // parses the command and takes action
 func (s *Server) handleCommand(input string, out io.Writer, cc *ConnContext) {
+	// TODO: fix the name of stringSPlit fucntion
+	// TODO: fix the 'i' variale name
 	// parse the input command
 	i, err := s.stringSplit(input)
 	if err != nil {
@@ -138,14 +90,14 @@ func (s *Server) handleCommand(input string, out io.Writer, cc *ConnContext) {
 	}
 
 	// convert raw command into command type
-	c, err := s.makeCommand(i, cc)
+	cmd, err := s.makeCommand(i, cc)
 	if err != nil {
 		fmt.Fprintln(out, err)
 		return
 	}
 
 	// handling disconnect
-	if c.name == DISCONNECT {
+	if cmd.name == DISCONNECT {
 		if conn, ok := out.(net.Conn); ok {
 			conn.Close()
 			return
@@ -153,34 +105,34 @@ func (s *Server) handleCommand(input string, out io.Writer, cc *ConnContext) {
 	}
 
 	// only add commands to multi tran if isMulti is ON & if they aren't commands related to multi
-	if cc.isMulti && c.name != EXEC && c.name != DISCARD && c.name != MULTI {
-		cc.multiCommandArr = append(cc.multiCommandArr, c)
+	if cc.isMulti && cmd.name != EXEC && cmd.name != DISCARD && cmd.name != MULTI {
+		cc.multiCommands = append(cc.multiCommands, cmd)
 		fmt.Fprintln(out, QUEUED)
 		return
 	}
 
 	// take appropriate action
-	resp := s.takeAction(cc, c)
+	resp := s.takeAction(cc, cmd)
 	fmt.Fprintln(out, resp)
 }
 
 // takes action based on the command name
-func (s *Server) takeAction(cc *ConnContext, c Command) string {
-	switch c.name {
+func (s *Server) takeAction(cc *ConnContext, cmd Command) string {
+	switch cmd.name {
 	case PING:
 		return s.pingAction()
 	case SELECT:
-		return s.selectAction(cc, c.val)
+		return s.selectAction(cc, cmd.val)
 	case SET:
-		return s.setAction(cc, c.key, c.val)
+		return s.setAction(cc, cmd.key, cmd.val)
 	case GET:
-		return s.getAction(cc, c.key)
+		return s.getAction(cc, cmd.key)
 	case DEL:
-		return s.delAction(cc, c.key)
+		return s.delAction(cc, cmd.key)
 	case INCR:
-		return s.incrAction(cc, c.key)
+		return s.incrAction(cc, cmd.key)
 	case INCRBY:
-		return s.incrbyAction(cc, c.key, c.val)
+		return s.incrbyAction(cc, cmd.key, cmd.val)
 	case MULTI:
 		return s.multiAction(cc)
 	case EXEC:
@@ -198,6 +150,7 @@ func (s *Server) pingAction() string {
 	return PONG
 }
 
+// TODO: fix the variabe name i to something more suotabnle
 func (s *Server) selectAction(cc *ConnContext, val string) string {
 	i, err := strconv.Atoi(val)
 	if err != nil {
@@ -205,7 +158,7 @@ func (s *Server) selectAction(cc *ConnContext, val string) string {
 	}
 
 	// db index should be between 0 and 15
-	if i < DbRangeMin || i > DbRangeMax {
+	if i < DB_RANGE_MIN || i > DB_RANGE_MAX {
 		return ErrDBIndexOutOfRange.Error()
 	}
 
@@ -217,12 +170,12 @@ func (s *Server) selectAction(cc *ConnContext, val string) string {
 	}
 	cc.dbIdx = i
 
-	return MssgOK
+	return MSSG_OK
 }
 
 func (s *Server) setAction(cc *ConnContext, key, val string) string {
 	s.Db[cc.dbIdx].Set(key, val)
-	return MssgOK
+	return MSSG_OK
 }
 
 func (s *Server) getAction(cc *ConnContext, key string) string {
@@ -261,7 +214,7 @@ func (s *Server) multiAction(cc *ConnContext) string {
 	}
 
 	cc.isMulti = true
-	return MssgOK
+	return MSSG_OK
 }
 
 func (s *Server) execAction(cc *ConnContext) string {
@@ -277,15 +230,15 @@ func (s *Server) execAction(cc *ConnContext) string {
 	}
 
 	// if no commands were given in a multi tran
-	if len(cc.multiCommandArr) == 0 {
+	if len(cc.multiCommands) == 0 {
 		s.resetTran(cc)
-		return MssgEmptyArray
+		return MSSG_EMPTY_ARRAY
 	}
 
 	// normal execution
 	var builder strings.Builder
-	lastCmdArrIdx := len(cc.multiCommandArr) - 1
-	for i, c := range cc.multiCommandArr {
+	lastCmdArrIdx := len(cc.multiCommands) - 1
+	for i, c := range cc.multiCommands {
 		builder.WriteString(fmt.Sprintf("%d) ", i+1))
 
 		// avoids the extra newline in final output for the last command in tran
@@ -308,19 +261,19 @@ func (s *Server) discardAction(cc *ConnContext) string {
 	}
 
 	s.resetTran(cc)
-	return MssgOK
+	return MSSG_OK
 }
 
 func (s *Server) resetTran(cc *ConnContext) {
 	cc.isMulti = false
 	cc.isTranDiscarded = false
-	cc.multiCommandArr = []Command{}
+	cc.multiCommands = []Command{}
 }
 
 func (s *Server) compactAction(cc *ConnContext) string {
 	data := s.Db[cc.dbIdx].GetAll()
 	if len(data) == 0 {
-		return MssgNil
+		return MSSG_NIL
 	}
 
 	// string builder implementation
@@ -381,16 +334,19 @@ func (s *Server) stringSplit(input string) ([]string, error) {
 	return out, nil
 }
 
-func (s *Server) isValidCommand(command string) bool {
+func (s *Server) isValidCommand(cmd string) bool {
 	// regex pattern for valid command
-	var validCommandPattern = `^(?i)(?:"[A-Za-z0-9 ]+"|\b[A-Za-z0-9]+\b)(?:\s+"[^"]*"\s*|\s+\b[A-Za-z0-9]+\b\s*)*$`
-	re := regexp.MustCompile(validCommandPattern)
-	return re.MatchString(command)
+	var validCmdPattern = `^(?i)(?:"[A-Za-z0-9 ]+"|\b[A-Za-z0-9]+\b)(?:\s+"[^"]*"\s*|\s+\b[A-Za-z0-9]+\b\s*)*$`
+	re := regexp.MustCompile(validCmdPattern)
+	return re.MatchString(cmd)
 }
 
 // turns the raw command into Command type
 // returns error if command is unknown or invalid number of args
 func (s *Server) makeCommand(i []string, cc *ConnContext) (Command, error) {
+	// TODO: extract the i[0] into its own variable for better rediability
+	// TODO: it also avoids the race conditions (put it in notion)
+	// TODO: before comparing the command name, lower case it for easier ----
 	switch {
 	case i[0] == "SELECT" || i[0] == "select":
 		if len(i) != 2 {

@@ -109,7 +109,7 @@ func TestHandleCommandWithNonMultiCommands(t *testing.T) {
 		data []commandData
 	}{
 		{"PING command", []commandData{{"", "", PING, PONG}}},
-		{"SET command", []commandData{{"", "", "SET foo bar", MssgOK}}},
+		{"SET command", []commandData{{"", "", "SET foo bar", MSSG_OK}}},
 		{"SET command with invalid number of arguments (1)", []commandData{{"", "", "SET foo", ErrWrongNumberOfArgs.Error()}}},
 		{"SET command with invalid number of arguments (3)", []commandData{{"", "", "SET foo bar extra", ErrWrongNumberOfArgs.Error()}}},
 		{"GET command with valid key", []commandData{{"foo", "bar", "GET foo", strconv.Quote("bar")}}},
@@ -176,22 +176,22 @@ func TestHandleCommandWithMultiCommands(t *testing.T) {
 		{
 			name:     "MULTI command with EXEC",
 			inputArr: []string{"MULTI", "SET foo bar", "GET foo", "EXEC"},
-			expOut:   []string{MssgOK, "QUEUED", "QUEUED", "1) OK\n2) \"bar\""},
+			expOut:   []string{MSSG_OK, "QUEUED", "QUEUED", "1) OK\n2) \"bar\""},
 		},
 		{
 			name:     "MULTI command with DISCARD",
 			inputArr: []string{"MULTI", "SET foo bar", "GET foo", "DISCARD"},
-			expOut:   []string{MssgOK, "QUEUED", "QUEUED", MssgOK},
+			expOut:   []string{MSSG_OK, "QUEUED", "QUEUED", MSSG_OK},
 		},
 		{
 			name:     "MULTI command with EXEC with previous errors (invalid arguments)",
 			inputArr: []string{"MULTI", "SET foo 5", "INCRBY foo 5 6", "EXEC"},
-			expOut:   []string{MssgOK, "QUEUED", ErrWrongNumberOfArgs.Error(), ErrTranAbortedDueToPrevError.Error()},
+			expOut:   []string{MSSG_OK, "QUEUED", ErrWrongNumberOfArgs.Error(), ErrTranAbortedDueToPrevError.Error()},
 		},
 		{
 			name:     "MULTI command with EXEC with previous errors (invalid command)",
 			inputArr: []string{"MULTI", "SET foo 5", "RANDOM NONSENSE", "EXEC"},
-			expOut:   []string{MssgOK, "QUEUED", ErrUnknownCommand.Error(), ErrTranAbortedDueToPrevError.Error()},
+			expOut:   []string{MSSG_OK, "QUEUED", ErrUnknownCommand.Error(), ErrTranAbortedDueToPrevError.Error()},
 		},
 		{
 			name:     "EXEC command without MULTI",
@@ -206,17 +206,17 @@ func TestHandleCommandWithMultiCommands(t *testing.T) {
 		{
 			name:     "MULTI calls nested",
 			inputArr: []string{"MULTI", "SET foo 5", "MULTI", "INCR foo", "GET foo", "EXEC"},
-			expOut:   []string{MssgOK, "QUEUED", ErrMultiCommandNested.Error(), "QUEUED", "QUEUED", "1) OK\n2) (integer) 6\n3) \"6\"\n"},
+			expOut:   []string{MSSG_OK, "QUEUED", ErrMultiCommandNested.Error(), "QUEUED", "QUEUED", "1) OK\n2) (integer) 6\n3) \"6\"\n"},
 		},
 		{
 			name:     "MULTI & EXEC without any commands",
 			inputArr: []string{"MULTI", "EXEC"},
-			expOut:   []string{MssgOK, MssgEmptyArray},
+			expOut:   []string{MSSG_OK, MSSG_EMPTY_ARRAY},
 		},
 		{
 			name:     "MULTI command with argument to EXEC",
 			inputArr: []string{"MULTI", "SET foo bar", "EXEC GVK", "EXEC"},
-			expOut:   []string{MssgOK, "QUEUED", ErrWrongNumberOfArgs.Error(), ErrExecWithoutMulti.Error()},
+			expOut:   []string{MSSG_OK, "QUEUED", ErrWrongNumberOfArgs.Error(), ErrExecWithoutMulti.Error()},
 		},
 	}
 
@@ -309,7 +309,7 @@ func TestServerWithMultipleClients(t *testing.T) {
 			input  []string
 			expOut []string
 		}{
-			{[]string{"SET name John"}, []string{MssgOK}},
+			{[]string{"SET name John"}, []string{MSSG_OK}},
 			{[]string{"GET name"}, []string{strconv.Quote("John")}},
 			{[]string{"INCRBY age 23"}, []string{"(integer) 23"}},
 			{[]string{"GET age"}, []string{strconv.Quote("23")}},
@@ -401,10 +401,10 @@ func TestSelectCommand(t *testing.T) {
 			input  []string
 			expOut []string
 		}{
-			{[]string{"SELECT 1", "SET name John"}, []string{MssgOK, MssgOK}},
-			{[]string{"SELECT 2", "SET name Mills"}, []string{MssgOK, MssgOK}},
-			{[]string{"SELECT 1", "GET name"}, []string{MssgOK, "John"}},
-			{[]string{"SELECT 2", "GET name"}, []string{MssgOK, "Mills"}},
+			{[]string{"SELECT 1", "SET name John"}, []string{MSSG_OK, MSSG_OK}},
+			{[]string{"SELECT 2", "SET name Mills"}, []string{MSSG_OK, MSSG_OK}},
+			{[]string{"SELECT 1", "GET name"}, []string{MSSG_OK, "John"}},
+			{[]string{"SELECT 2", "GET name"}, []string{MSSG_OK, "Mills"}},
 		}
 
 		// starting the server

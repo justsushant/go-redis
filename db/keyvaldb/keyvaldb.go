@@ -7,7 +7,6 @@ import (
 	"github.com/justsushant/one2n-go-bootcamp/go-redis/store"
 )
 
-// TODO: Put the interface away from their implementation (like store package)
 // TODO: leaky abstraction for the store interface; fix the exported struct and make sure that constructor is not available in the entire scope of the project
 // TODO: try the composition of interfaces in the struct (look at the ReadWriter interface for inspirtion)
 
@@ -15,8 +14,8 @@ type KeyValueDatabase struct {
 	store store.Store
 }
 
-func GetNewDB(store store.Store) KeyValueDatabase {
-	return KeyValueDatabase{
+func GetNewDB(store store.Store) *KeyValueDatabase {
+	return &KeyValueDatabase{
 		store: store,
 	}
 }
